@@ -28,6 +28,7 @@ make
 ./scripts/dev.sh test
 ./scripts/dev.sh lex test_codes/main.cpp
 ./scripts/dev.sh parse test_codes/main.cpp
+./scripts/dev.sh ir test_codes/main.cpp
 ./scripts/dev.sh run -koopa input.sy -o build/output.koopa
 ./scripts/dev.sh clean
 ```
@@ -109,6 +110,24 @@ int main() {
 
 ```sh
 ./scripts/dev.sh parse test_codes/main.cpp
+```
+
+## Koopa IR 生成
+
+IR 生成模块位于 `src/compiler/ir` 目录. 当前 `KoopaGenerator` 接收 parser 生成的语法树, 将最小函数定义转换为 Koopa IR.
+
+查看示例源文件的 Koopa IR:
+
+```sh
+./scripts/dev.sh ir test_codes/main.cpp
+```
+
+当前支持的输入形态:
+
+```cpp
+int main() {
+  return 0;
+}
 ```
 
 如在此基础上进行开发, 你需要重新初始化 Git 仓库:

@@ -16,6 +16,7 @@ Commands:
   test [make-args...]        Build and run unit tests in Docker
   lex <source-file>          Print the token stream for a source file
   parse <source-file>        Print the parse tree for a source file
+  ir <source-file>           Print Koopa IR for a source file
   run <compiler-args...>     Run build/compiler in Docker
   shell                      Open an interactive shell in Docker
 
@@ -25,6 +26,7 @@ Examples:
   $0 test
   $0 lex test_codes/main.cpp
   $0 parse test_codes/main.cpp
+  $0 ir test_codes/main.cpp
   $0 run -koopa input.sy -o build/output.koopa
   $0 clean
 EOF
@@ -93,6 +95,19 @@ case "${command}" in
     fi
     docker_run bash -lc \
       'clang++ -std=c++17 -Isrc tools/dump_parse_tree.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/grammar_rules.cpp -o /tmp/dump_parse_tree && /tmp/dump_parse_tree "$1"' \
+      bash "$1"
+    ;;
+  ir)
+    if [[ $# -ne 1 ]]; then
+      echo "Usage: $0 ir <source-file>" >&2
+      exit 1
+    fi
+    if [[ ! -f "${ROOT_DIR}/$1" ]]; then
+      echo "source file not found: $1" >&2
+      exit 1
+    fi
+    docker_run bash -lc \
+      'clang++ -std=c++17 -Isrc tools/dump_koopa.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/grammar_rules.cpp src/compiler/ir/koopa_generator.cpp -o /tmp/dump_koopa && /tmp/dump_koopa "$1"' \
       bash "$1"
     ;;
   run)
