@@ -2,6 +2,7 @@
 
 #include "compiler/lexer/lexer.h"
 
+#include <set>
 #include <vector>
 
 namespace compiler::lexer {
@@ -18,6 +19,7 @@ struct RegexTokenRule {
 };
 
 const std::vector<RegexTokenRule> &defaultRegexTokenRules();
+const std::set<std::string> &defaultTokenNames();
 
 LexerBuilder defaultLexerBuilder();
 Lexer buildDefaultLexer();

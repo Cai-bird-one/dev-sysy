@@ -27,6 +27,7 @@ make
 ./scripts/dev.sh build
 ./scripts/dev.sh test
 ./scripts/dev.sh lex test_codes/main.cpp
+./scripts/dev.sh parse test_codes/main.cpp
 ./scripts/dev.sh run -koopa input.sy -o build/output.koopa
 ./scripts/dev.sh clean
 ```
@@ -70,6 +71,45 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
 构建时会自动把所有 token 规则合并为完整 DFA. 如果某个 DFA 接受态能同时匹配多个 token, 可以通过 `hasAmbiguity()` 和 `ambiguities()` 查看二义性; 对有二义性的 lexer 调用 `tokenize` 会抛出异常.
 
 默认匹配策略参考 Flex: 优先选择最长匹配; 长度相同时, 优先选择规则表中更靠前的规则. 因此关键字规则应写在 `IDENT` 之前, 例如 `"int"` 会被识别为 `INT`, 而不是 `IDENT`.
+
+## 语法分析框架
+
+语法分析模块位于 `src/compiler/parser` 目录. Parser 使用上下文无关文法定义语法, 文法规则集中写在 `grammar_rules.h` / `grammar_rules.cpp` 中. 当前实现会检查并构建 LL(1) 预测表, 解析时使用递归下降法输出语法树.
+
+Parser 会从 lexer 的 token 名集合自动推导终结符, 文法文件只需要维护产生式. 命名规范如下:
+
+- token / terminal 使用 `TOKEN_CASE`, 例如 `INT_CONST`, `RETURN`
+- nonterminal 不使用 `TOKEN_CASE`, 例如 `CompUnit`, `FuncDef`
+- RHS 中出现的 terminal 必须能在 lexer 的 token 规则中找到对应 token 名
+
+如果命名不符合规范, token 与 nonterminal 重名, 或 RHS 中引用了既不是 token 也不是 nonterminal 的符号, parser 构建阶段会直接报错.
+
+默认语法可以这样使用:
+
+```cpp
+#include "compiler/lexer/token_rules.h"
+#include "compiler/parser/grammar_rules.h"
+
+using namespace compiler;
+
+lexer::Lexer lexer = lexer::buildDefaultLexer();
+parser::Parser parser = parser::buildDefaultParser();
+std::unique_ptr<parser::ParseNode> tree = parser.parse(tokens);
+```
+
+当前默认文法先覆盖最小函数:
+
+```cpp
+int main() {
+  return 0;
+}
+```
+
+查看示例源文件的语法树:
+
+```sh
+./scripts/dev.sh parse test_codes/main.cpp
+```
 
 如在此基础上进行开发, 你需要重新初始化 Git 仓库:
 

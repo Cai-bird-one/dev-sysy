@@ -39,11 +39,25 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     {"CHAR", "."},
 };
 
+std::set<std::string> buildDefaultTokenNames() {
+  std::set<std::string> names;
+  for (const RegexTokenRule &rule : kDefaultRegexTokenRules) {
+    if (rule.action == TokenRuleAction::Emit) {
+      names.insert(rule.name);
+    }
+  }
+  return names;
+}
+
+const std::set<std::string> kDefaultTokenNames = buildDefaultTokenNames();
+
 } // namespace
 
 const std::vector<RegexTokenRule> &defaultRegexTokenRules() {
   return kDefaultRegexTokenRules;
 }
+
+const std::set<std::string> &defaultTokenNames() { return kDefaultTokenNames; }
 
 LexerBuilder defaultLexerBuilder() {
   LexerBuilder builder;
