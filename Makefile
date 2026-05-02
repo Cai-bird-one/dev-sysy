@@ -38,6 +38,7 @@ TOP_DIR := $(shell pwd)
 TARGET_EXEC := compiler
 SRC_DIR := $(TOP_DIR)/src
 BUILD_DIR ?= $(TOP_DIR)/build
+OBJ_DIR := $(BUILD_DIR)/obj
 LIB_DIR ?= $(CDE_LIBRARY_PATH)/native
 INC_DIR ?= $(CDE_INCLUDE_PATH)
 CFLAGS += -I$(INC_DIR)
@@ -47,19 +48,32 @@ LDFLAGS += -L$(LIB_DIR) -lkoopa
 # Source files & target files
 FB_SRCS := $(patsubst $(SRC_DIR)/%.l, $(BUILD_DIR)/%.lex$(FB_EXT), $(shell find $(SRC_DIR) -name "*.l"))
 FB_SRCS += $(patsubst $(SRC_DIR)/%.y, $(BUILD_DIR)/%.tab$(FB_EXT), $(shell find $(SRC_DIR) -name "*.y"))
-SRCS := $(FB_SRCS) $(shell find $(SRC_DIR) -name "*.c" -or -name "*.cpp" -or -name "*.cc")
+ALL_SRCS := $(FB_SRCS) $(shell find $(SRC_DIR) -name "*.c" -or -name "*.cpp" -or -name "*.cc")
+SRCS := $(filter-out $(SRC_DIR)/tests/%,$(ALL_SRCS))
 OBJS := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.c.o, $(SRCS))
 OBJS := $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.cpp.o, $(OBJS))
 OBJS := $(patsubst $(SRC_DIR)/%.cc, $(BUILD_DIR)/%.cc.o, $(OBJS))
-OBJS := $(patsubst $(BUILD_DIR)/%.c, $(BUILD_DIR)/%.c.o, $(OBJS))
-OBJS := $(patsubst $(BUILD_DIR)/%.cpp, $(BUILD_DIR)/%.cpp.o, $(OBJS))
-OBJS := $(patsubst $(BUILD_DIR)/%.cc, $(BUILD_DIR)/%.cc.o, $(OBJS))
+OBJS := $(patsubst $(BUILD_DIR)/%.c, $(OBJ_DIR)/%.c.o, $(OBJS))
+OBJS := $(patsubst $(BUILD_DIR)/%.cpp, $(OBJ_DIR)/%.cpp.o, $(OBJS))
+OBJS := $(patsubst $(BUILD_DIR)/%.cc, $(OBJ_DIR)/%.cc.o, $(OBJS))
+OBJS := $(patsubst $(BUILD_DIR)/%, $(OBJ_DIR)/%, $(OBJS))
+
+TEST_SRCS := $(filter $(SRC_DIR)/tests/%,$(ALL_SRCS))
+TEST_SUPPORT_SRCS := $(filter-out $(SRC_DIR)/main.c $(SRC_DIR)/main.cpp $(SRC_DIR)/main.cc,$(SRCS))
+TEST_RUNNER_SRCS := $(TEST_SUPPORT_SRCS) $(TEST_SRCS)
+TEST_OBJS := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.c.o, $(TEST_RUNNER_SRCS))
+TEST_OBJS := $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.cpp.o, $(TEST_OBJS))
+TEST_OBJS := $(patsubst $(SRC_DIR)/%.cc, $(BUILD_DIR)/%.cc.o, $(TEST_OBJS))
+TEST_OBJS := $(patsubst $(BUILD_DIR)/%.c, $(OBJ_DIR)/%.c.o, $(TEST_OBJS))
+TEST_OBJS := $(patsubst $(BUILD_DIR)/%.cpp, $(OBJ_DIR)/%.cpp.o, $(TEST_OBJS))
+TEST_OBJS := $(patsubst $(BUILD_DIR)/%.cc, $(OBJ_DIR)/%.cc.o, $(TEST_OBJS))
+TEST_OBJS := $(patsubst $(BUILD_DIR)/%, $(OBJ_DIR)/%, $(TEST_OBJS))
 
 # Header directories & dependencies
 INC_DIRS := $(shell find $(SRC_DIR) -type d)
 INC_DIRS += $(INC_DIRS:$(SRC_DIR)%=$(BUILD_DIR)%)
 INC_FLAGS := $(addprefix -I, $(INC_DIRS))
-DEPS := $(OBJS:.o=.d)
+DEPS := $(sort $(OBJS:.o=.d) $(TEST_OBJS:.o=.d))
 CPPFLAGS = $(INC_FLAGS) -MMD -MP
 
 
@@ -67,22 +81,30 @@ CPPFLAGS = $(INC_FLAGS) -MMD -MP
 $(BUILD_DIR)/$(TARGET_EXEC): $(FB_SRCS) $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) -lpthread -ldl -o $@
 
+.PHONY: test
+test: $(BUILD_DIR)/tests/test_runner
+	$<
+
+$(BUILD_DIR)/tests/test_runner: $(FB_SRCS) $(TEST_OBJS)
+	mkdir -p $(dir $@)
+	$(CXX) $(TEST_OBJS) $(LDFLAGS) -lpthread -ldl -o $@
+
 # C source
 define c_recipe
 	mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 endef
-$(BUILD_DIR)/%.c.o: $(SRC_DIR)/%.c; $(c_recipe)
-$(BUILD_DIR)/%.c.o: $(BUILD_DIR)/%.c; $(c_recipe)
+$(OBJ_DIR)/%.c.o: $(SRC_DIR)/%.c; $(c_recipe)
+$(OBJ_DIR)/%.c.o: $(BUILD_DIR)/%.c; $(c_recipe)
 
 # C++ source
 define cxx_recipe
 	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 endef
-$(BUILD_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp; $(cxx_recipe)
-$(BUILD_DIR)/%.cpp.o: $(BUILD_DIR)/%.cpp; $(cxx_recipe)
-$(BUILD_DIR)/%.cc.o: $(SRC_DIR)/%.cc; $(cxx_recipe)
+$(OBJ_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp; $(cxx_recipe)
+$(OBJ_DIR)/%.cpp.o: $(BUILD_DIR)/%.cpp; $(cxx_recipe)
+$(OBJ_DIR)/%.cc.o: $(SRC_DIR)/%.cc; $(cxx_recipe)
 
 # Flex
 $(BUILD_DIR)/%.lex$(FB_EXT): $(SRC_DIR)/%.l

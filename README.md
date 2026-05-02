@@ -21,6 +21,56 @@ cd sysy-make-template
 make
 ```
 
+如果在宿主机中开发, 可以直接使用仓库内脚本调用 Docker 环境完成编译和运行:
+
+```sh
+./scripts/dev.sh build
+./scripts/dev.sh test
+./scripts/dev.sh lex test_codes/main.cpp
+./scripts/dev.sh run -koopa input.sy -o build/output.koopa
+./scripts/dev.sh clean
+```
+
+如需进入容器内手动操作:
+
+```sh
+./scripts/dev.sh shell
+```
+
+## 词法分析框架
+
+词法分析模块位于 `src/compiler/lexer` 目录. 词法分析引擎在 `lexer.h` / `lexer.cpp` 中, 具体 token 规则集中写在 `token_rules.h` / `token_rules.cpp` 中.
+
+默认规则可以这样使用:
+
+```cpp
+#include "compiler/lexer/token_rules.h"
+
+#include <sstream>
+
+using namespace compiler::lexer;
+
+Lexer lexer = buildDefaultLexer();
+
+std::istringstream input("abc+12");
+std::vector<Token> tokens = lexer.tokenize(input);
+```
+
+新增或修改 token 时, 优先改 `src/compiler/lexer/token_rules.cpp` 里的规则表:
+
+```cpp
+const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
+    {"WHITESPACE", "[ \\t\\n\\r]+", TokenRuleAction::Skip},
+    {"IDENT", "[a-zA-Z_][a-zA-Z0-9_]*"},
+    {"INT_CONST", "[0-9]+"},
+    {"PLUS", "[+]"},
+};
+```
+
+构建时会自动把所有 token 规则合并为完整 DFA. 如果某个 DFA 接受态能同时匹配多个 token, 可以通过 `hasAmbiguity()` 和 `ambiguities()` 查看二义性; 对有二义性的 lexer 调用 `tokenize` 会抛出异常.
+
+默认匹配策略参考 Flex: 优先选择最长匹配; 长度相同时, 优先选择规则表中更靠前的规则. 因此关键字规则应写在 `IDENT` 之前, 例如 `"int"` 会被识别为 `INT`, 而不是 `IDENT`.
+
 如在此基础上进行开发, 你需要重新初始化 Git 仓库:
 
 ```sh
