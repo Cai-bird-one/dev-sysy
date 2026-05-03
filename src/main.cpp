@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -16,13 +17,27 @@ struct CompilerOptions {
   std::string output_path;
 };
 
+class CliError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+
+class InputFileError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+
+class OutputFileError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+
 CompilerOptions parseOptions(int argc, const char *argv[]) {
   if (argc != 5) {
-    throw std::runtime_error(
-        "usage: compiler -koopa <input-file> -o <output-file>");
+    throw CliError("usage: compiler -koopa <input-file> -o <output-file>");
   }
   if (std::string(argv[3]) != "-o") {
-    throw std::runtime_error("missing -o before output file");
+    throw CliError("missing -o before output file");
   }
 
   return {argv[1], argv[2], argv[4]};
@@ -31,12 +46,12 @@ CompilerOptions parseOptions(int argc, const char *argv[]) {
 void compileToKoopa(const CompilerOptions &options) {
   std::ifstream input(options.input_path);
   if (!input) {
-    throw std::runtime_error("cannot open input file: " + options.input_path);
+    throw InputFileError("cannot open input file: " + options.input_path);
   }
 
   std::ofstream output(options.output_path);
   if (!output) {
-    throw std::runtime_error("cannot open output file: " + options.output_path);
+    throw OutputFileError("cannot open output file: " + options.output_path);
   }
 
   compiler::lexer::Lexer lexer = compiler::lexer::buildDefaultLexer();
@@ -54,11 +69,29 @@ int main(int argc, const char *argv[]) {
   try {
     CompilerOptions options = parseOptions(argc, argv);
     if (options.mode != "-koopa") {
-      throw std::runtime_error("unsupported output mode: " + options.mode);
+      throw CliError("unsupported output mode: " + options.mode);
     }
     compileToKoopa(options);
+  } catch (const CliError &error) {
+    std::cerr << "[cli] " << error.what() << '\n';
+    return 2;
+  } catch (const InputFileError &error) {
+    std::cerr << "[input] " << error.what() << '\n';
+    return 3;
+  } catch (const OutputFileError &error) {
+    std::cerr << "[output] " << error.what() << '\n';
+    return 4;
+  } catch (const compiler::lexer::LexerError &error) {
+    std::cerr << "[lexer] " << error.what() << '\n';
+    return 10;
+  } catch (const compiler::parser::ParserError &error) {
+    std::cerr << "[parser] " << error.what() << '\n';
+    return 11;
+  } catch (const compiler::ir::IrError &error) {
+    std::cerr << "[ir] " << error.what() << '\n';
+    return 12;
   } catch (const std::exception &error) {
-    std::cerr << error.what() << '\n';
+    std::cerr << "[internal] " << error.what() << '\n';
     return 1;
   }
 
