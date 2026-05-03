@@ -10,6 +10,7 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     {"BLOCK_COMMENT", "/[*]([^*]|[*][^/])*[*]/", TokenRuleAction::Skip},
 
     // Keywords must appear before IDENT, matching Flex rule priority.
+    {"CONST", "const"},
     {"INT", "int"},
     {"RETURN", "return"},
 

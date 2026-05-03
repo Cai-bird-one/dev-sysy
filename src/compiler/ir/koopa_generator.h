@@ -3,6 +3,7 @@
 #include "compiler/parser/parser.h"
 
 #include <iosfwd>
+#include <map>
 #include <stdexcept>
 #include <string>
 
@@ -22,7 +23,14 @@ public:
 private:
   std::string findFunctionName(const compiler::parser::ParseNode &ast) const;
   std::string findReturnValue(const compiler::parser::ParseNode &ast) const;
-  long long evaluateExpression(const compiler::parser::ParseNode &node) const;
+  long long evaluateExpression(const compiler::parser::ParseNode &node,
+                               const std::map<std::string, long long> &symbols)
+      const;
+  void collectBlockItems(const compiler::parser::ParseNode &node,
+                         std::map<std::string, long long> &symbols,
+                         const compiler::parser::ParseNode *&return_exp) const;
+  void collectDeclaration(const compiler::parser::ParseNode &node,
+                          std::map<std::string, long long> &symbols) const;
 };
 
 } // namespace compiler::ir

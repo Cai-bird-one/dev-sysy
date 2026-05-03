@@ -9,11 +9,19 @@
 using namespace compiler;
 
 TEST_CASE(koopa_generator_emits_minimal_function) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  std::istringstream input("int main() { return 0; }");
+  std::unique_ptr<parser::ParseNode> comp_unit = parser.parse(lexer.tokenize(input));
+
+  ir::KoopaGenerator generator;
+  std::string koopa = generator.generate(*comp_unit);
+
+  EXPECT_EQ(koopa, "fun @main(): i32 {\n%entry:\n  ret 0\n}\n");
+}
+
+TEST_CASE(koopa_generator_emits_from_manual_ast) {
   parser::ParseNode comp_unit("CompUnit");
-  auto func_def = std::make_unique<parser::ParseNode>("FuncDef");
-  func_def->children.push_back(std::make_unique<parser::ParseNode>("INT", "int"));
-  func_def->children.push_back(
-      std::make_unique<parser::ParseNode>("IDENT", "main"));
   auto exp = std::make_unique<parser::ParseNode>("Exp");
   auto unary_exp = std::make_unique<parser::ParseNode>("UnaryExp");
   auto primary_exp = std::make_unique<parser::ParseNode>("PrimaryExp");
@@ -22,7 +30,15 @@ TEST_CASE(koopa_generator_emits_minimal_function) {
   primary_exp->children.push_back(std::move(number));
   unary_exp->children.push_back(std::move(primary_exp));
   exp->children.push_back(std::move(unary_exp));
-  func_def->children.push_back(std::move(exp));
+  auto stmt = std::make_unique<parser::ParseNode>("Stmt");
+  stmt->children.push_back(std::make_unique<parser::ParseNode>("RETURN", "return"));
+  stmt->children.push_back(std::move(exp));
+  stmt->children.push_back(std::make_unique<parser::ParseNode>("SEMICOLON", ";"));
+  auto block = std::make_unique<parser::ParseNode>("Block");
+  block->children.push_back(std::move(stmt));
+  auto func_def = std::make_unique<parser::ParseNode>("FuncDef");
+  func_def->children.push_back(std::make_unique<parser::ParseNode>("IDENT", "main"));
+  func_def->children.push_back(std::move(block));
   comp_unit.children.push_back(std::move(func_def));
 
   ir::KoopaGenerator generator;
