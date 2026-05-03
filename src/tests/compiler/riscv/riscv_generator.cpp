@@ -48,3 +48,53 @@ TEST_CASE(riscv_generator_runs_after_koopa_generation) {
   EXPECT_TRUE(riscv.find("li a0, 7") != std::string::npos);
   EXPECT_TRUE(riscv.find("ret") != std::string::npos);
 }
+
+TEST_CASE(riscv_generator_handles_stack_variables) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("fun @main(): i32 {\n"
+                                         "%entry:\n"
+                                         "  %a = alloc i32\n"
+                                         "  store 1, %a\n"
+                                         "  %0 = load %a\n"
+                                         "  %1 = add %0, 2\n"
+                                         "  store %1, %a\n"
+                                         "  %2 = load %a\n"
+                                         "  ret %2\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("li t0, -16") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw t0, 0(sp)") != std::string::npos);
+  EXPECT_TRUE(riscv.find("add t0, t0, t1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("lw a0") != std::string::npos);
+  EXPECT_TRUE(riscv.find("ret") != std::string::npos);
+}
+
+TEST_CASE(riscv_generator_handles_global_variables) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("global @g = alloc i32, 7\n"
+                                         "\n"
+                                         "fun @main(): i32 {\n"
+                                         "%entry:\n"
+                                         "  %0 = load @g\n"
+                                         "  ret %0\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("  .data\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("g:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  .word 7\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("la t0, g") != std::string::npos);
+  EXPECT_TRUE(riscv.find("lw t0, 0(t0)") != std::string::npos);
+}
+
+TEST_CASE(riscv_generator_handles_comparisons) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("fun @main(): i32 {\n"
+                                         "%entry:\n"
+                                         "  %0 = lt 1, 2\n"
+                                         "  %1 = eq %0, 1\n"
+                                         "  ret %1\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("slt t0, t0, t1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("seqz t0, t0") != std::string::npos);
+}
