@@ -251,6 +251,46 @@ TEST_CASE(koopa_generator_uses_outer_scope_in_shadowing_initializer) {
             "}\n");
 }
 
+TEST_CASE(koopa_generator_booleanizes_runtime_logical_operands) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input("int main(){int a=2,b=4; return a&&b;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "fun @main(): i32 {\n%entry:\n"
+            "  %a = alloc i32\n"
+            "  store 2, %a\n"
+            "  %b = alloc i32\n"
+            "  store 4, %b\n"
+            "  %0 = load %a\n"
+            "  %1 = load %b\n"
+            "  %2 = ne %0, 0\n"
+            "  %3 = ne %1, 0\n"
+            "  %4 = and %2, %3\n"
+            "  ret %4\n"
+            "}\n");
+
+  std::istringstream or_input("int main(){int a=2,b=4; return a||b;}");
+  ast = parser.parse(lexer.tokenize(or_input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "fun @main(): i32 {\n%entry:\n"
+            "  %a = alloc i32\n"
+            "  store 2, %a\n"
+            "  %b = alloc i32\n"
+            "  store 4, %b\n"
+            "  %0 = load %a\n"
+            "  %1 = load %b\n"
+            "  %2 = ne %0, 0\n"
+            "  %3 = ne %1, 0\n"
+            "  %4 = or %2, %3\n"
+            "  ret %4\n"
+            "}\n");
+}
+
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
   lexer::Lexer lexer = lexer::buildDefaultLexer();
   parser::Parser parser = parser::buildDefaultParser();

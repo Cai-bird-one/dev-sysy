@@ -499,9 +499,26 @@ private:
     if (lhs.constant && rhs.constant) {
       return makeConstant(foldBinary(op, lhs.const_value, rhs.const_value));
     }
+    if (op == "AND" || op == "OR") {
+      Value bool_lhs = emitBoolean(lhs);
+      Value bool_rhs = emitBoolean(rhs);
+      std::string result = newTemp();
+      emit(result + " = " + koopaOp(op) + " " + bool_lhs.operand + ", " +
+           bool_rhs.operand);
+      return Value{false, 0, result};
+    }
     std::string result = newTemp();
     emit(result + " = " + koopaOp(op) + " " + lhs.operand + ", " +
          rhs.operand);
+    return Value{false, 0, result};
+  }
+
+  Value emitBoolean(Value value) {
+    if (value.constant) {
+      return makeConstant(value.const_value != 0 ? 1 : 0);
+    }
+    std::string result = newTemp();
+    emit(result + " = ne " + value.operand + ", 0");
     return Value{false, 0, result};
   }
 
