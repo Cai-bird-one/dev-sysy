@@ -11,13 +11,34 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
 
     // Keywords must appear before IDENT, matching Flex rule priority.
     {"CONST", "const"},
+    {"VOID", "void"},
     {"INT", "int"},
+    {"IF", "if"},
+    {"ELSE", "else"},
+    {"WHILE", "while"},
+    {"BREAK", "break"},
+    {"CONTINUE", "continue"},
     {"RETURN", "return"},
 
-    // Identifier.
+    // Identifier:
+    // identifier ::= identifier-nondigit
+    //              | identifier identifier-nondigit
+    //              | identifier digit
     {"IDENT", "[a-zA-Z_][a-zA-Z0-9_]*"},
 
-    // Integer literals.
+    // Invalid integer-like strings must be checked before valid integer
+    // literals so longest-match tokenization reports them as one lexer error.
+    {"INVALID_INT_CONST", "0[xX]"},
+    {"INVALID_INT_CONST", "0[xX][0-9a-fA-F]*[g-zG-Z_][a-zA-Z0-9_]*"},
+    {"INVALID_INT_CONST", "0[0-7]*[8-9][0-9a-zA-Z_]*"},
+    {"INVALID_INT_CONST", "[1-9][0-9]*[a-zA-Z_][a-zA-Z0-9_]*"},
+
+    // Integer literals:
+    // integer-const     ::= decimal-const | octal-const | hexadecimal-const
+    // decimal-const     ::= nonzero-digit | decimal-const digit
+    // octal-const       ::= "0" | octal-const octal-digit
+    // hexadecimal-const ::= hexadecimal-prefix hexadecimal-digit
+    //                    | hexadecimal-const hexadecimal-digit
     {"INT_CONST", "[1-9][0-9]*"},
     {"INT_CONST", "0[0-7]*"},
     {"INT_CONST", "0[xX][0-9a-fA-F]+"},
@@ -30,11 +51,21 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     {"SLASH", "/"},
     {"PERCENT", "%"},
 
+    {"LE", "<="},
+    {"GE", ">="},
+    {"EQ", "=="},
+    {"NE", "!="},
+    {"AND", "&&"},
+    {"OR", "[|][|]"},
+    {"LT", "<"},
+    {"GT", ">"},
     {"ASSIGN", "="},
     {"SEMICOLON", ";"},
     {"COMMA", ","},
     {"LPAREN", "[(]"},
     {"RPAREN", "[)]"},
+    {"LBRACKET", "\\["},
+    {"RBRACKET", "\\]"},
     {"LBRACE", "[{]"},
     {"RBRACE", "[}]"},
 

@@ -232,17 +232,15 @@ std::string lookaheadLexeme(const std::vector<compiler::lexer::Token> &tokens,
   return tokens[index].lexeme;
 }
 
-void setParseTableEntry(std::map<std::string, std::map<std::string, int>> &table,
+void setParseTableEntry(
+    std::map<std::string, std::map<std::string, std::vector<int>>> &table,
                         const std::string &nonterminal,
                         const std::string &lookahead, int production_id) {
-  auto found = table[nonterminal].find(lookahead);
-  if (found != table[nonterminal].end() && found->second != production_id) {
-    std::ostringstream message;
-    message << "LL(1) conflict for " << nonterminal << " on " << lookahead
-            << ": production " << found->second << " vs " << production_id;
-    throw ParserConflictError(message.str());
+  std::vector<int> &entries = table[nonterminal][lookahead];
+  if (std::find(entries.begin(), entries.end(), production_id) ==
+      entries.end()) {
+    entries.push_back(production_id);
   }
-  table[nonterminal][lookahead] = production_id;
 }
 
 } // namespace
@@ -294,12 +292,23 @@ Parser::parseSymbol(const std::string &symbol,
                       "' (" + lookahead + ") while parsing " + symbol);
   }
 
-  const Production &production = productions_[production_found->second];
-  auto node = std::make_unique<ParseNode>(symbol);
-  for (const std::string &child_symbol : production.rhs) {
-    node->children.push_back(parseSymbol(child_symbol, tokens, input_pos));
+  ParserError last_error("no production matched while parsing " + symbol);
+  for (int production_id : production_found->second) {
+    const Production &production = productions_[production_id];
+    auto node = std::make_unique<ParseNode>(symbol);
+    size_t trial_pos = input_pos;
+    try {
+      for (const std::string &child_symbol : production.rhs) {
+        node->children.push_back(parseSymbol(child_symbol, tokens, trial_pos));
+      }
+      input_pos = trial_pos;
+      return node;
+    } catch (const ParserError &error) {
+      last_error = error;
+    }
   }
-  return node;
+
+  throw last_error;
 }
 
 void Parser::save(std::ostream &output) const {
@@ -319,8 +328,11 @@ void Parser::save(std::ostream &output) const {
   output << "ll1_table\n";
   for (const auto &row : parse_table_) {
     for (const auto &entry : row.second) {
-      output << "  " << row.first << ", " << entry.first << " -> "
-             << entry.second << '\n';
+      output << "  " << row.first << ", " << entry.first << " ->";
+      for (int production_id : entry.second) {
+        output << ' ' << production_id;
+      }
+      output << '\n';
     }
   }
 }

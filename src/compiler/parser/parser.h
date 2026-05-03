@@ -61,7 +61,7 @@ private:
   std::vector<Production> productions_;
   std::set<std::string> terminals_;
   std::set<std::string> nonterminals_;
-  std::map<std::string, std::map<std::string, int>> parse_table_;
+  std::map<std::string, std::map<std::string, std::vector<int>>> parse_table_;
 };
 
 class ParserBuilder {

@@ -494,8 +494,12 @@ std::vector<Token> Lexer::tokenize(std::istream &input) const {
 
     int token_id = states_[last_accept_state].accepted_token_ids.front();
     if (!token_skipped_[token_id]) {
-      tokens.push_back(
-          {token_names_[token_id], text.substr(pos, last_accept_pos - pos)});
+      std::string lexeme = text.substr(pos, last_accept_pos - pos);
+      if (token_names_[token_id].find("INVALID_") == 0) {
+        throw LexerError("invalid token '" + lexeme + "' (" +
+                         token_names_[token_id] + ")");
+      }
+      tokens.push_back({token_names_[token_id], lexeme});
     }
     pos = last_accept_pos;
   }

@@ -32,6 +32,18 @@ private:
   long long evaluateAddExpTail(
       const compiler::parser::ParseNode &node, long long lhs,
       const std::map<std::string, long long> &symbols) const;
+  long long evaluateRelExpTail(
+      const compiler::parser::ParseNode &node, long long lhs,
+      const std::map<std::string, long long> &symbols) const;
+  long long evaluateEqExpTail(
+      const compiler::parser::ParseNode &node, long long lhs,
+      const std::map<std::string, long long> &symbols) const;
+  long long evaluateLAndExpTail(
+      const compiler::parser::ParseNode &node, long long lhs,
+      const std::map<std::string, long long> &symbols) const;
+  long long evaluateLOrExpTail(
+      const compiler::parser::ParseNode &node, long long lhs,
+      const std::map<std::string, long long> &symbols) const;
   long long evaluateMulExpTail(
       const compiler::parser::ParseNode &node, long long lhs,
       const std::map<std::string, long long> &symbols) const;

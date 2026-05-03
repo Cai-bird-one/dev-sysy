@@ -1,4 +1,5 @@
 #include "compiler/parser/grammar_rules.h"
+#include "compiler/lexer/token_rules.h"
 #include "tests/test_framework.h"
 
 #include <sstream>
@@ -19,7 +20,7 @@ TEST_CASE(parser_parses_minimal_function) {
   EXPECT_EQ(tree->symbol, "CompUnit");
   EXPECT_EQ(tree->children.size(), 2u);
   EXPECT_EQ(tree->children[0]->symbol, "TopItem");
-  EXPECT_EQ(tree->children[1]->symbol, "TopItems");
+  EXPECT_EQ(tree->children[1]->symbol, "CompUnitTail");
 }
 
 TEST_CASE(parser_parses_global_const_before_function) {
@@ -38,7 +39,25 @@ TEST_CASE(parser_parses_global_const_before_function) {
 
   EXPECT_EQ(tree->symbol, "CompUnit");
   EXPECT_EQ(tree->children[0]->symbol, "TopItem");
-  EXPECT_EQ(tree->children[1]->symbol, "TopItems");
+  EXPECT_EQ(tree->children[1]->symbol, "CompUnitTail");
+}
+
+TEST_CASE(parser_parses_full_sysy_constructs) {
+  Lexer lexer = buildDefaultLexer();
+  Parser parser = buildDefaultParser();
+  std::istringstream input(
+      "const int n = 2;\n"
+      "void sink(int a[], int b) { return; }\n"
+      "int main() {\n"
+      "  int x[2] = {1, 2};\n"
+      "  if (x[0] < x[1] && n != 0) sink(x, n); else x[0] = 0;\n"
+      "  while (x[0] <= 10 || !n) { break; continue; }\n"
+      "  return x[0] + x[1] % 2;\n"
+      "}\n");
+
+  std::unique_ptr<ParseNode> tree = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(tree->symbol, "CompUnit");
 }
 
 TEST_CASE(parser_rejects_unexpected_token) {
