@@ -5,7 +5,8 @@ namespace {
 
 const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     // Whitespace and comments.
-    {"WHITESPACE", "[ \\t\\n\\r]+", TokenRuleAction::Skip},
+    {"UTF8_BOM", "\xEF\xBB\xBF", TokenRuleAction::Skip},
+    {"WHITESPACE", "[ \\t\\n\\r\\v\\f]+", TokenRuleAction::Skip},
     {"LINE_COMMENT", "//.*", TokenRuleAction::Skip},
     {"BLOCK_COMMENT", "/[*]([^*]|[*][^/])*[*]/", TokenRuleAction::Skip},
 

@@ -62,6 +62,18 @@ TEST_CASE(token_rules_skip_block_comments) {
   EXPECT_EQ(tokens[5].name, "RETURN");
 }
 
+TEST_CASE(token_rules_skip_bom_and_c_whitespace) {
+  Lexer lexer = buildDefaultLexer();
+  std::istringstream input("\xEF\xBB\xBFint\vmain\f() { return 0; }");
+  std::vector<Token> tokens = lexer.tokenize(input);
+
+  EXPECT_EQ(tokens.size(), 9u);
+  EXPECT_EQ(tokens[0].name, "INT");
+  EXPECT_EQ(tokens[1].name, "IDENT");
+  EXPECT_EQ(tokens[1].lexeme, "main");
+  EXPECT_EQ(tokens[5].name, "RETURN");
+}
+
 TEST_CASE(token_rules_tokenize_integer_literal_forms) {
   Lexer lexer = buildDefaultLexer();
   std::istringstream input("0 123 077 0x2a 0XCAFE");
@@ -135,7 +147,10 @@ TEST_CASE(token_rules_expose_rule_table) {
   const std::vector<RegexTokenRule> &rules = defaultRegexTokenRules();
 
   EXPECT_TRUE(!rules.empty());
-  EXPECT_EQ(std::string(rules[0].name), "WHITESPACE");
+  EXPECT_EQ(std::string(rules[0].name), "UTF8_BOM");
   EXPECT_EQ(static_cast<int>(rules[0].action),
+            static_cast<int>(TokenRuleAction::Skip));
+  EXPECT_EQ(std::string(rules[1].name), "WHITESPACE");
+  EXPECT_EQ(static_cast<int>(rules[1].action),
             static_cast<int>(TokenRuleAction::Skip));
 }

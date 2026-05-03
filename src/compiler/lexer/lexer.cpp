@@ -49,6 +49,8 @@ CharSet makeWhitespaceSet() {
   chars.set(static_cast<size_t>('\t'));
   chars.set(static_cast<size_t>('\n'));
   chars.set(static_cast<size_t>('\r'));
+  chars.set(static_cast<size_t>('\v'));
+  chars.set(static_cast<size_t>('\f'));
   return chars;
 }
 
@@ -245,6 +247,10 @@ private:
       return makeCharSet('\r');
     case 't':
       return makeCharSet('\t');
+    case 'v':
+      return makeCharSet('\v');
+    case 'f':
+      return makeCharSet('\f');
     case 'd':
       return makeDigitSet();
     case 's':
