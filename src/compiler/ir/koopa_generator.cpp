@@ -104,6 +104,22 @@ long long KoopaGenerator::evaluateExpression(
     return evaluateExpression(*node.children[0], symbols);
   }
 
+  if (node.symbol == "AddExp") {
+    if (node.children.size() != 2) {
+      throw IrError("invalid AddExp node");
+    }
+    long long lhs = evaluateExpression(*node.children[0], symbols);
+    return evaluateAddExpTail(*node.children[1], lhs, symbols);
+  }
+
+  if (node.symbol == "MulExp") {
+    if (node.children.size() != 2) {
+      throw IrError("invalid MulExp node");
+    }
+    long long lhs = evaluateExpression(*node.children[0], symbols);
+    return evaluateMulExpTail(*node.children[1], lhs, symbols);
+  }
+
   if (node.symbol == "UnaryExp") {
     if (node.children.size() == 1) {
       return evaluateExpression(*node.children[0], symbols);
@@ -135,6 +151,57 @@ long long KoopaGenerator::evaluateExpression(
   }
 
   throw IrError("unsupported expression node: " + node.symbol);
+}
+
+long long KoopaGenerator::evaluateAddExpTail(
+    const compiler::parser::ParseNode &node, long long lhs,
+    const std::map<std::string, long long> &symbols) const {
+  if (node.symbol != "AddExpTail") {
+    throw IrError("expected AddExpTail node");
+  }
+  if (node.children.empty()) {
+    return lhs;
+  }
+  if (node.children.size() != 3) {
+    throw IrError("invalid AddExpTail node");
+  }
+
+  const std::string &op = node.children[0]->symbol;
+  long long rhs = evaluateExpression(*node.children[1], symbols);
+  if (op == "PLUS") {
+    return evaluateAddExpTail(*node.children[2], lhs + rhs, symbols);
+  }
+  if (op == "MINUS") {
+    return evaluateAddExpTail(*node.children[2], lhs - rhs, symbols);
+  }
+  throw IrError("invalid AddExp operator: " + op);
+}
+
+long long KoopaGenerator::evaluateMulExpTail(
+    const compiler::parser::ParseNode &node, long long lhs,
+    const std::map<std::string, long long> &symbols) const {
+  if (node.symbol != "MulExpTail") {
+    throw IrError("expected MulExpTail node");
+  }
+  if (node.children.empty()) {
+    return lhs;
+  }
+  if (node.children.size() != 3) {
+    throw IrError("invalid MulExpTail node");
+  }
+
+  const std::string &op = node.children[0]->symbol;
+  long long rhs = evaluateExpression(*node.children[1], symbols);
+  if (op == "STAR") {
+    return evaluateMulExpTail(*node.children[2], lhs * rhs, symbols);
+  }
+  if (op == "SLASH") {
+    return evaluateMulExpTail(*node.children[2], lhs / rhs, symbols);
+  }
+  if (op == "PERCENT") {
+    return evaluateMulExpTail(*node.children[2], lhs % rhs, symbols);
+  }
+  throw IrError("invalid MulExp operator: " + op);
 }
 
 void KoopaGenerator::collectBlockItems(

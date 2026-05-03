@@ -26,6 +26,12 @@ private:
   long long evaluateExpression(const compiler::parser::ParseNode &node,
                                const std::map<std::string, long long> &symbols)
       const;
+  long long evaluateAddExpTail(
+      const compiler::parser::ParseNode &node, long long lhs,
+      const std::map<std::string, long long> &symbols) const;
+  long long evaluateMulExpTail(
+      const compiler::parser::ParseNode &node, long long lhs,
+      const std::map<std::string, long long> &symbols) const;
   void collectBlockItems(const compiler::parser::ParseNode &node,
                          std::map<std::string, long long> &symbols,
                          const compiler::parser::ParseNode *&return_exp) const;

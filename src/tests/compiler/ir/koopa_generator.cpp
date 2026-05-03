@@ -86,3 +86,15 @@ TEST_CASE(koopa_generator_handles_unary_constant_expressions) {
   ast = parser.parse(lexer.tokenize(paren_input));
   EXPECT_EQ(generator.generate(*ast), "fun @main(): i32 {\n%entry:\n  ret 1\n}\n");
 }
+
+TEST_CASE(koopa_generator_handles_binary_constant_expressions) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int main(){const int a=1+2*3,b=(a-1)%4;return b;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast), "fun @main(): i32 {\n%entry:\n  ret 2\n}\n");
+}
