@@ -17,8 +17,28 @@ TEST_CASE(parser_parses_minimal_function) {
   std::unique_ptr<ParseNode> tree = parser.parse(tokens);
 
   EXPECT_EQ(tree->symbol, "CompUnit");
-  EXPECT_EQ(tree->children.size(), 1u);
-  EXPECT_EQ(tree->children[0]->symbol, "FuncDef");
+  EXPECT_EQ(tree->children.size(), 2u);
+  EXPECT_EQ(tree->children[0]->symbol, "TopItem");
+  EXPECT_EQ(tree->children[1]->symbol, "TopItems");
+}
+
+TEST_CASE(parser_parses_global_const_before_function) {
+  std::vector<Token> tokens = {
+      {"CONST", "const"},   {"INT", "int"},       {"IDENT", "a"},
+      {"ASSIGN", "="},      {"INT_CONST", "10"},  {"COMMA", ","},
+      {"IDENT", "b"},       {"ASSIGN", "="},      {"INT_CONST", "5"},
+      {"SEMICOLON", ";"},   {"INT", "int"},       {"IDENT", "main"},
+      {"LPAREN", "("},      {"RPAREN", ")"},      {"LBRACE", "{"},
+      {"RETURN", "return"}, {"IDENT", "b"},       {"SEMICOLON", ";"},
+      {"RBRACE", "}"},
+  };
+
+  Parser parser = buildDefaultParser();
+  std::unique_ptr<ParseNode> tree = parser.parse(tokens);
+
+  EXPECT_EQ(tree->symbol, "CompUnit");
+  EXPECT_EQ(tree->children[0]->symbol, "TopItem");
+  EXPECT_EQ(tree->children[1]->symbol, "TopItems");
 }
 
 TEST_CASE(parser_rejects_unexpected_token) {

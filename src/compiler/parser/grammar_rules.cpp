@@ -8,7 +8,15 @@ namespace {
 const Grammar kDefaultGrammar = {
     "CompUnit",
     {
-        {"CompUnit", {"FuncDef"}},
+        {"CompUnit", {"TopItem", "TopItems"}},
+        {"TopItems", {"TopItem", "TopItems"}},
+        {"TopItems", {}},
+        {"TopItem", {"CONST", "BType", "ConstDef", "ConstDefList", "SEMICOLON"}},
+        {"TopItem", {"INT", "IDENT", "IntTopTail"}},
+        {"IntTopTail", {"LPAREN", "RPAREN", "Block"}},
+        {"IntTopTail", {"VarDefAfterIdent", "VarDefList", "SEMICOLON"}},
+        {"VarDefAfterIdent", {"ASSIGN", "InitVal"}},
+        {"VarDefAfterIdent", {}},
         {"FuncDef",
          {"FuncType", "IDENT", "LPAREN", "RPAREN", "Block"}},
         {"FuncType", {"INT"}},

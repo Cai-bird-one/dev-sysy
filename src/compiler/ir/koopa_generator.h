@@ -23,6 +23,9 @@ public:
 private:
   std::string findFunctionName(const compiler::parser::ParseNode &ast) const;
   std::string findReturnValue(const compiler::parser::ParseNode &ast) const;
+  void collectGlobalDeclarations(const compiler::parser::ParseNode &node,
+                                 std::map<std::string, long long> &symbols)
+      const;
   long long evaluateExpression(const compiler::parser::ParseNode &node,
                                const std::map<std::string, long long> &symbols)
       const;

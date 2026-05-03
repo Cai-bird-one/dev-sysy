@@ -98,3 +98,17 @@ TEST_CASE(koopa_generator_handles_binary_constant_expressions) {
 
   EXPECT_EQ(generator.generate(*ast), "fun @main(): i32 {\n%entry:\n  ret 2\n}\n");
 }
+
+TEST_CASE(koopa_generator_handles_global_declarations) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input("const int a = 10, b = 5; int main(){return b;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  EXPECT_EQ(generator.generate(*ast), "fun @main(): i32 {\n%entry:\n  ret 5\n}\n");
+
+  std::istringstream var_input("int g = 7, h; int main(){return g;}");
+  ast = parser.parse(lexer.tokenize(var_input));
+  EXPECT_EQ(generator.generate(*ast), "fun @main(): i32 {\n%entry:\n  ret 7\n}\n");
+}

@@ -22,6 +22,37 @@ findFirst(const compiler::parser::ParseNode &node, const std::string &symbol) {
   return nullptr;
 }
 
+const compiler::parser::ParseNode *
+findDirectChild(const compiler::parser::ParseNode &node,
+                const std::string &symbol) {
+  for (const auto &child : node.children) {
+    if (child->symbol == symbol) {
+      return child.get();
+    }
+  }
+  return nullptr;
+}
+
+bool isTopLevelFunction(const compiler::parser::ParseNode &node) {
+  const compiler::parser::ParseNode *tail = findDirectChild(node, "IntTopTail");
+  return tail != nullptr && !tail->children.empty() &&
+         tail->children[0]->symbol == "LPAREN";
+}
+
+const compiler::parser::ParseNode *
+findFunctionTopItem(const compiler::parser::ParseNode &node) {
+  if (node.symbol == "TopItem" && isTopLevelFunction(node)) {
+    return &node;
+  }
+  for (const auto &child : node.children) {
+    const compiler::parser::ParseNode *found = findFunctionTopItem(*child);
+    if (found != nullptr) {
+      return found;
+    }
+  }
+  return nullptr;
+}
+
 } // namespace
 
 std::string KoopaGenerator::generate(
@@ -44,7 +75,15 @@ void KoopaGenerator::generate(const compiler::parser::ParseNode &ast,
 
 std::string KoopaGenerator::findFunctionName(
     const compiler::parser::ParseNode &ast) const {
-  const compiler::parser::ParseNode *ident = findFirst(ast, "IDENT");
+  const compiler::parser::ParseNode *function = findFirst(ast, "FuncDef");
+  if (function == nullptr) {
+    function = findFunctionTopItem(ast);
+  }
+  if (function == nullptr) {
+    throw IrError("cannot find function definition in AST");
+  }
+
+  const compiler::parser::ParseNode *ident = findDirectChild(*function, "IDENT");
   if (ident == nullptr || ident->lexeme.empty()) {
     throw IrError("cannot find function name in AST");
   }
@@ -54,6 +93,7 @@ std::string KoopaGenerator::findFunctionName(
 std::string KoopaGenerator::findReturnValue(
     const compiler::parser::ParseNode &ast) const {
   std::map<std::string, long long> symbols;
+  collectGlobalDeclarations(ast, symbols);
   const compiler::parser::ParseNode *return_exp = nullptr;
   const compiler::parser::ParseNode *block = findFirst(ast, "Block");
   if (block == nullptr) {
@@ -64,6 +104,51 @@ std::string KoopaGenerator::findReturnValue(
     throw IrError("cannot find return expression in AST");
   }
   return std::to_string(evaluateExpression(*return_exp, symbols));
+}
+
+void KoopaGenerator::collectGlobalDeclarations(
+    const compiler::parser::ParseNode &node,
+    std::map<std::string, long long> &symbols) const {
+  if (node.symbol == "Block") {
+    return;
+  }
+
+  if (node.symbol == "TopItem") {
+    if (isTopLevelFunction(node)) {
+      return;
+    }
+
+    if (!node.children.empty() && node.children[0]->symbol == "INT") {
+      const compiler::parser::ParseNode *ident = findDirectChild(node, "IDENT");
+      const compiler::parser::ParseNode *tail =
+          findDirectChild(node, "IntTopTail");
+      if (ident == nullptr || tail == nullptr) {
+        throw IrError("invalid global variable declaration");
+      }
+
+      long long value = 0;
+      if (!tail->children.empty() &&
+          tail->children[0]->symbol == "VarDefAfterIdent" &&
+          !tail->children[0]->children.empty()) {
+        value = evaluateExpression(*tail->children[0]->children[1], symbols);
+      }
+      symbols[ident->lexeme] = value;
+
+      for (const auto &child : tail->children) {
+        if (child->symbol == "VarDefList") {
+          collectDeclaration(*child, symbols);
+        }
+      }
+      return;
+    }
+
+    collectDeclaration(node, symbols);
+    return;
+  }
+
+  for (const auto &child : node.children) {
+    collectGlobalDeclarations(*child, symbols);
+  }
 }
 
 long long KoopaGenerator::evaluateExpression(
