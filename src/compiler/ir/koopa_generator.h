@@ -22,6 +22,7 @@ public:
 private:
   std::string findFunctionName(const compiler::parser::ParseNode &ast) const;
   std::string findReturnValue(const compiler::parser::ParseNode &ast) const;
+  long long evaluateExpression(const compiler::parser::ParseNode &node) const;
 };
 
 } // namespace compiler::ir

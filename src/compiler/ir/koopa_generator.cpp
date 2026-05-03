@@ -1,5 +1,6 @@
 #include "compiler/ir/koopa_generator.h"
 
+#include <cstdlib>
 #include <ostream>
 #include <sstream>
 
@@ -51,11 +52,69 @@ std::string KoopaGenerator::findFunctionName(
 
 std::string KoopaGenerator::findReturnValue(
     const compiler::parser::ParseNode &ast) const {
-  const compiler::parser::ParseNode *int_const = findFirst(ast, "INT_CONST");
-  if (int_const == nullptr || int_const->lexeme.empty()) {
-    throw IrError("cannot find return value in AST");
+  const compiler::parser::ParseNode *exp = findFirst(ast, "Exp");
+  if (exp == nullptr) {
+    throw IrError("cannot find return expression in AST");
   }
-  return int_const->lexeme;
+  return std::to_string(evaluateExpression(*exp));
+}
+
+long long KoopaGenerator::evaluateExpression(
+    const compiler::parser::ParseNode &node) const {
+  if (node.symbol == "INT_CONST") {
+    char *end = nullptr;
+    long long value = std::strtoll(node.lexeme.c_str(), &end, 0);
+    if (end == nullptr || *end != '\0') {
+      throw IrError("invalid integer literal: " + node.lexeme);
+    }
+    return value;
+  }
+
+  if (node.symbol == "Number") {
+    if (node.children.size() != 1) {
+      throw IrError("invalid Number node");
+    }
+    return evaluateExpression(*node.children[0]);
+  }
+
+  if (node.symbol == "Exp") {
+    if (node.children.size() != 1) {
+      throw IrError("invalid Exp node");
+    }
+    return evaluateExpression(*node.children[0]);
+  }
+
+  if (node.symbol == "UnaryExp") {
+    if (node.children.size() == 1) {
+      return evaluateExpression(*node.children[0]);
+    }
+    if (node.children.size() == 2) {
+      const std::string &op = node.children[0]->children[0]->symbol;
+      long long value = evaluateExpression(*node.children[1]);
+      if (op == "PLUS") {
+        return value;
+      }
+      if (op == "MINUS") {
+        return -value;
+      }
+      if (op == "NOT") {
+        return value == 0 ? 1 : 0;
+      }
+    }
+    throw IrError("invalid UnaryExp node");
+  }
+
+  if (node.symbol == "PrimaryExp") {
+    if (node.children.size() == 1) {
+      return evaluateExpression(*node.children[0]);
+    }
+    if (node.children.size() == 3) {
+      return evaluateExpression(*node.children[1]);
+    }
+    throw IrError("invalid PrimaryExp node");
+  }
+
+  throw IrError("unsupported expression node: " + node.symbol);
 }
 
 } // namespace compiler::ir

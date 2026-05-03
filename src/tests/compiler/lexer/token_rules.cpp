@@ -50,6 +50,18 @@ TEST_CASE(token_rules_tokenize_flex_style_sample) {
   EXPECT_EQ(tokens[8].name, "RBRACE");
 }
 
+TEST_CASE(token_rules_skip_block_comments) {
+  Lexer lexer = buildDefaultLexer();
+  std::istringstream input("int main/* comment */() { return 0; }");
+  std::vector<Token> tokens = lexer.tokenize(input);
+
+  EXPECT_EQ(tokens.size(), 9u);
+  EXPECT_EQ(tokens[0].name, "INT");
+  EXPECT_EQ(tokens[1].name, "IDENT");
+  EXPECT_EQ(tokens[2].name, "LPAREN");
+  EXPECT_EQ(tokens[5].name, "RETURN");
+}
+
 TEST_CASE(token_rules_tokenize_integer_literal_forms) {
   Lexer lexer = buildDefaultLexer();
   std::istringstream input("123 077 0x2a 0XCAFE");

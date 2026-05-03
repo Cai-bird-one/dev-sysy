@@ -7,6 +7,7 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     // Whitespace and comments.
     {"WHITESPACE", "[ \\t\\n\\r]+", TokenRuleAction::Skip},
     {"LINE_COMMENT", "//.*", TokenRuleAction::Skip},
+    {"BLOCK_COMMENT", "/[*]([^*]|[*][^/])*[*]/", TokenRuleAction::Skip},
 
     // Keywords must appear before IDENT, matching Flex rule priority.
     {"INT", "int"},
@@ -23,6 +24,7 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     // Operators and separators.
     {"PLUS", "[+]"},
     {"MINUS", "-"},
+    {"NOT", "!"},
     {"STAR", "[*]"},
     {"SLASH", "/"},
     {"PERCENT", "%"},
