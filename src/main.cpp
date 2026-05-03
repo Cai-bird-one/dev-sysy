@@ -1,6 +1,7 @@
 #include "compiler/ir/koopa_generator.h"
 #include "compiler/lexer/token_rules.h"
 #include "compiler/parser/grammar_rules.h"
+#include "compiler/riscv/riscv_generator.h"
 
 #include <exception>
 #include <fstream>
@@ -34,7 +35,8 @@ public:
 
 CompilerOptions parseOptions(int argc, const char *argv[]) {
   if (argc != 5) {
-    throw CliError("usage: compiler -koopa <input-file> -o <output-file>");
+    throw CliError(
+        "usage: compiler (-koopa|-riscv) <input-file> -o <output-file>");
   }
   if (std::string(argv[3]) != "-o") {
     throw CliError("missing -o before output file");
@@ -43,24 +45,44 @@ CompilerOptions parseOptions(int argc, const char *argv[]) {
   return {argv[1], argv[2], argv[4]};
 }
 
-void compileToKoopa(const CompilerOptions &options) {
-  std::ifstream input(options.input_path);
+std::unique_ptr<compiler::parser::ParseNode>
+parseSource(const std::string &input_path) {
+  std::ifstream input(input_path);
   if (!input) {
-    throw InputFileError("cannot open input file: " + options.input_path);
+    throw InputFileError("cannot open input file: " + input_path);
   }
+
+  compiler::lexer::Lexer lexer = compiler::lexer::buildDefaultLexer();
+  compiler::parser::Parser parser = compiler::parser::buildDefaultParser();
+  return parser.parse(lexer.tokenize(input));
+}
+
+void compileToKoopa(const CompilerOptions &options) {
+  std::unique_ptr<compiler::parser::ParseNode> ast =
+      parseSource(options.input_path);
 
   std::ofstream output(options.output_path);
   if (!output) {
     throw OutputFileError("cannot open output file: " + options.output_path);
   }
 
-  compiler::lexer::Lexer lexer = compiler::lexer::buildDefaultLexer();
-  compiler::parser::Parser parser = compiler::parser::buildDefaultParser();
   compiler::ir::KoopaGenerator generator;
-
-  std::unique_ptr<compiler::parser::ParseNode> ast =
-      parser.parse(lexer.tokenize(input));
   generator.generate(*ast, output);
+}
+
+void compileToRiscv(const CompilerOptions &options) {
+  std::unique_ptr<compiler::parser::ParseNode> ast =
+      parseSource(options.input_path);
+
+  std::ofstream output(options.output_path);
+  if (!output) {
+    throw OutputFileError("cannot open output file: " + options.output_path);
+  }
+
+  compiler::ir::KoopaGenerator koopa_generator;
+  compiler::riscv::RiscvGenerator riscv_generator;
+
+  riscv_generator.generate(koopa_generator.generate(*ast), output);
 }
 
 bool contains(const std::string &text, const std::string &pattern) {
@@ -127,10 +149,13 @@ int parserExitCode(const compiler::parser::ParserError &error) {
 int main(int argc, const char *argv[]) {
   try {
     CompilerOptions options = parseOptions(argc, argv);
-    if (options.mode != "-koopa") {
+    if (options.mode == "-koopa") {
+      compileToKoopa(options);
+    } else if (options.mode == "-riscv") {
+      compileToRiscv(options);
+    } else {
       throw CliError("unsupported output mode: " + options.mode);
     }
-    compileToKoopa(options);
   } catch (const CliError &error) {
     std::cerr << "[cli] " << error.what() << '\n';
     return 2;
@@ -149,6 +174,9 @@ int main(int argc, const char *argv[]) {
   } catch (const compiler::ir::IrError &error) {
     std::cerr << "[ir] " << error.what() << '\n';
     return 12;
+  } catch (const compiler::riscv::RiscvError &error) {
+    std::cerr << "[riscv] " << error.what() << '\n';
+    return 13;
   } catch (const std::exception &error) {
     std::cerr << "[internal] " << error.what() << '\n';
     return 1;
