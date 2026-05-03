@@ -1,2 +1,4 @@
 *.DS_Store
 /build
+/sysy-testsuit-collection
+/test_codes
