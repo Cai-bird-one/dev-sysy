@@ -373,7 +373,6 @@ private:
 
     std::string pointer = newNamedValue(name);
     emit(pointer + " = alloc i32");
-    define(name, Symbol{SymbolKind::Variable, 0, pointer});
 
     Value initial_value;
     if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
@@ -381,6 +380,7 @@ private:
     } else {
       initial_value = makeConstant(0);
     }
+    define(name, Symbol{SymbolKind::Variable, 0, pointer});
     emit("store " + initial_value.operand + ", " + pointer);
   }
 
