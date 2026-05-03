@@ -56,12 +56,15 @@ private:
   parseSymbol(const std::string &symbol,
               const std::vector<compiler::lexer::Token> &tokens,
               size_t &input_pos) const;
+  void rememberError(size_t input_pos, const std::string &message) const;
 
   Grammar grammar_;
   std::vector<Production> productions_;
   std::set<std::string> terminals_;
   std::set<std::string> nonterminals_;
   std::map<std::string, std::map<std::string, std::vector<int>>> parse_table_;
+  mutable size_t farthest_error_pos_ = 0;
+  mutable std::string farthest_error_message_;
 };
 
 class ParserBuilder {

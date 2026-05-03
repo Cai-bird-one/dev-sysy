@@ -253,12 +253,23 @@ ParseNode::ParseNode(std::string symbol, std::string lexeme)
 std::unique_ptr<ParseNode>
 Parser::parse(const std::vector<compiler::lexer::Token> &tokens) const {
   size_t input_pos = 0;
-  std::unique_ptr<ParseNode> tree =
-      parseSymbol(grammar_.start_symbol, tokens, input_pos);
+  farthest_error_pos_ = 0;
+  farthest_error_message_.clear();
+  std::unique_ptr<ParseNode> tree;
+  try {
+    tree = parseSymbol(grammar_.start_symbol, tokens, input_pos);
+  } catch (const ParserError &error) {
+    if (!farthest_error_message_.empty()) {
+      throw ParserError(farthest_error_message_);
+    }
+    throw;
+  }
   if (input_pos != tokens.size()) {
-    throw ParserError("unexpected trailing token '" +
-                      lookaheadLexeme(tokens, input_pos) + "' (" +
-                      lookaheadName(tokens, input_pos) + ")");
+    std::string message = "unexpected trailing token '" +
+                          lookaheadLexeme(tokens, input_pos) + "' (" +
+                          lookaheadName(tokens, input_pos) + ")";
+    rememberError(input_pos, message);
+    throw ParserError(message);
   }
   return tree;
 }
@@ -270,9 +281,11 @@ Parser::parseSymbol(const std::string &symbol,
   if (terminals_.find(symbol) != terminals_.end()) {
     std::string lookahead = lookaheadName(tokens, input_pos);
     if (lookahead != symbol) {
-      throw ParserError("expected " + symbol + ", got '" +
-                        lookaheadLexeme(tokens, input_pos) + "' (" +
-                        lookahead + ")");
+      std::string message = "expected " + symbol + ", got '" +
+                            lookaheadLexeme(tokens, input_pos) + "' (" +
+                            lookahead + ")";
+      rememberError(input_pos, message);
+      throw ParserError(message);
     }
     auto node =
         std::make_unique<ParseNode>(tokens[input_pos].name, tokens[input_pos].lexeme);
@@ -288,11 +301,15 @@ Parser::parseSymbol(const std::string &symbol,
   std::string lookahead = lookaheadName(tokens, input_pos);
   auto production_found = nonterminal_found->second.find(lookahead);
   if (production_found == nonterminal_found->second.end()) {
-    throw ParserError("unexpected token '" + lookaheadLexeme(tokens, input_pos) +
-                      "' (" + lookahead + ") while parsing " + symbol);
+    std::string message = "unexpected token '" +
+                          lookaheadLexeme(tokens, input_pos) + "' (" +
+                          lookahead + ") while parsing " + symbol;
+    rememberError(input_pos, message);
+    throw ParserError(message);
   }
 
   ParserError last_error("no production matched while parsing " + symbol);
+  size_t farthest_error_pos = input_pos;
   for (int production_id : production_found->second) {
     const Production &production = productions_[production_id];
     auto node = std::make_unique<ParseNode>(symbol);
@@ -304,11 +321,22 @@ Parser::parseSymbol(const std::string &symbol,
       input_pos = trial_pos;
       return node;
     } catch (const ParserError &error) {
-      last_error = error;
+      if (trial_pos >= farthest_error_pos) {
+        farthest_error_pos = trial_pos;
+        last_error = error;
+      }
     }
   }
 
   throw last_error;
+}
+
+void Parser::rememberError(size_t input_pos,
+                           const std::string &message) const {
+  if (farthest_error_message_.empty() || input_pos >= farthest_error_pos_) {
+    farthest_error_pos_ = input_pos;
+    farthest_error_message_ = message;
+  }
 }
 
 void Parser::save(std::ostream &output) const {

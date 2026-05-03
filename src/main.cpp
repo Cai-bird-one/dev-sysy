@@ -63,6 +63,65 @@ void compileToKoopa(const CompilerOptions &options) {
   generator.generate(*ast, output);
 }
 
+bool contains(const std::string &text, const std::string &pattern) {
+  return text.find(pattern) != std::string::npos;
+}
+
+int parserExitCode(const compiler::parser::ParserError &error) {
+  const std::string message = error.what();
+
+  // 20: input had valid prefixes, but parser stopped before consuming all tokens.
+  if (contains(message, "unexpected trailing token")) {
+    return 20;
+  }
+
+  // 21: top-level, function-definition, and function-parameter syntax.
+  if (contains(message, "CompUnit") || contains(message, "TopItem") ||
+      contains(message, "FuncDef") || contains(message, "FuncType") ||
+      contains(message, "FuncFParam")) {
+    return 21;
+  }
+
+  // 22: declarations and initializer lists.
+  if (contains(message, "Decl") || contains(message, "BType") ||
+      contains(message, "Const") || contains(message, "VarDef") ||
+      contains(message, "InitVal")) {
+    return 22;
+  }
+
+  // 23: block and statement syntax.
+  if (contains(message, "Block") || contains(message, "Stmt") ||
+      contains(message, "ElseOpt") || contains(message, "ReturnExpOpt")) {
+    return 23;
+  }
+
+  // 24: lvalues, primary expressions, unary expressions, and function calls.
+  if (contains(message, "LVal") || contains(message, "PrimaryExp") ||
+      contains(message, "UnaryExp") || contains(message, "UnaryOp") ||
+      contains(message, "FuncRParams")) {
+    return 24;
+  }
+
+  // 25: arithmetic expression layers.
+  if (contains(message, "MulExp") || contains(message, "AddExp")) {
+    return 25;
+  }
+
+  // 26: comparison and logical expression layers.
+  if (contains(message, "RelExp") || contains(message, "EqExp") ||
+      contains(message, "LAndExp") || contains(message, "LOrExp") ||
+      contains(message, "Exp")) {
+    return 26;
+  }
+
+  // 27: direct terminal mismatch, e.g. "expected SEMICOLON".
+  if (contains(message, "expected ")) {
+    return 27;
+  }
+
+  return 11;
+}
+
 } // namespace
 
 int main(int argc, const char *argv[]) {
@@ -86,7 +145,7 @@ int main(int argc, const char *argv[]) {
     return 10;
   } catch (const compiler::parser::ParserError &error) {
     std::cerr << "[parser] " << error.what() << '\n';
-    return 11;
+    return parserExitCode(error);
   } catch (const compiler::ir::IrError &error) {
     std::cerr << "[ir] " << error.what() << '\n';
     return 12;
