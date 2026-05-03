@@ -33,6 +33,7 @@ const Grammar kDefaultGrammar = {
         {"ConstInitValListOpt", {}},
         {"ConstInitValListTail",
          {"COMMA", "ConstInitVal", "ConstInitValListTail"}},
+        {"ConstInitValListTail", {"COMMA"}},
         {"ConstInitValListTail", {}},
         {"ConstExp", {"Exp"}},
 
@@ -47,6 +48,7 @@ const Grammar kDefaultGrammar = {
         {"InitValListOpt", {"InitVal", "InitValListTail"}},
         {"InitValListOpt", {}},
         {"InitValListTail", {"COMMA", "InitVal", "InitValListTail"}},
+        {"InitValListTail", {"COMMA"}},
         {"InitValListTail", {}},
 
         {"FuncDef",
@@ -54,6 +56,7 @@ const Grammar kDefaultGrammar = {
           "Block"}},
         {"FuncType", {"VOID"}},
         {"FuncType", {"INT"}},
+        {"FuncFParamsOpt", {"VOID"}},
         {"FuncFParamsOpt", {"FuncFParams"}},
         {"FuncFParamsOpt", {}},
         {"FuncFParams", {"FuncFParam", "FuncFParamsTail"}},
