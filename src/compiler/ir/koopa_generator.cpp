@@ -3,10 +3,30 @@
 #include <cstdlib>
 #include <map>
 #include <ostream>
+#include <set>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 namespace compiler::ir {
 namespace {
+
+struct Value {
+  bool constant = false;
+  long long const_value = 0;
+  std::string operand;
+};
+
+enum class SymbolKind {
+  Constant,
+  Variable,
+};
+
+struct Symbol {
+  SymbolKind kind = SymbolKind::Constant;
+  long long const_value = 0;
+  std::string pointer;
+};
 
 const compiler::parser::ParseNode *
 findFirst(const compiler::parser::ParseNode &node, const std::string &symbol) {
@@ -33,460 +53,574 @@ findDirectChild(const compiler::parser::ParseNode &node,
   return nullptr;
 }
 
-bool isTopLevelFunction(const compiler::parser::ParseNode &node) {
-  const compiler::parser::ParseNode *tail = findDirectChild(node, "IntTopTail");
-  return tail != nullptr && !tail->children.empty() &&
-         tail->children[0]->symbol == "LPAREN";
+bool hasNonEmptyChild(const compiler::parser::ParseNode &node,
+                      const std::string &symbol) {
+  const compiler::parser::ParseNode *child = findDirectChild(node, symbol);
+  return child != nullptr && !child->children.empty();
 }
 
-const compiler::parser::ParseNode *
-findFunctionTopItem(const compiler::parser::ParseNode &node) {
-  if (node.symbol == "TopItem" && isTopLevelFunction(node)) {
-    return &node;
+std::string toOperand(long long value) { return std::to_string(value); }
+
+std::string koopaOp(const std::string &token) {
+  if (token == "PLUS") {
+    return "add";
   }
-  for (const auto &child : node.children) {
-    const compiler::parser::ParseNode *found = findFunctionTopItem(*child);
-    if (found != nullptr) {
-      return found;
+  if (token == "MINUS") {
+    return "sub";
+  }
+  if (token == "STAR") {
+    return "mul";
+  }
+  if (token == "SLASH") {
+    return "div";
+  }
+  if (token == "PERCENT") {
+    return "mod";
+  }
+  if (token == "LT") {
+    return "lt";
+  }
+  if (token == "GT") {
+    return "gt";
+  }
+  if (token == "LE") {
+    return "le";
+  }
+  if (token == "GE") {
+    return "ge";
+  }
+  if (token == "EQ") {
+    return "eq";
+  }
+  if (token == "NE") {
+    return "ne";
+  }
+  if (token == "AND") {
+    return "and";
+  }
+  if (token == "OR") {
+    return "or";
+  }
+  throw IrError("unsupported binary operator: " + token);
+}
+
+long long foldBinary(const std::string &op, long long lhs, long long rhs) {
+  if (op == "PLUS") {
+    return lhs + rhs;
+  }
+  if (op == "MINUS") {
+    return lhs - rhs;
+  }
+  if (op == "STAR") {
+    return lhs * rhs;
+  }
+  if (op == "SLASH") {
+    return lhs / rhs;
+  }
+  if (op == "PERCENT") {
+    return lhs % rhs;
+  }
+  if (op == "LT") {
+    return lhs < rhs;
+  }
+  if (op == "GT") {
+    return lhs > rhs;
+  }
+  if (op == "LE") {
+    return lhs <= rhs;
+  }
+  if (op == "GE") {
+    return lhs >= rhs;
+  }
+  if (op == "EQ") {
+    return lhs == rhs;
+  }
+  if (op == "NE") {
+    return lhs != rhs;
+  }
+  if (op == "AND") {
+    return (lhs != 0) && (rhs != 0);
+  }
+  if (op == "OR") {
+    return (lhs != 0) || (rhs != 0);
+  }
+  throw IrError("unsupported binary operator: " + op);
+}
+
+long long expectConstant(const Value &value, const std::string &context) {
+  if (!value.constant) {
+    throw IrError(context + " must be a constant expression");
+  }
+  return value.const_value;
+}
+
+class FunctionBuilder {
+public:
+  explicit FunctionBuilder(std::string function_name)
+      : function_name_(std::move(function_name)) {
+    scopes_.push_back({});
+  }
+
+  std::string generate(const compiler::parser::ParseNode &ast) {
+    collectGlobalConstants(ast);
+    const compiler::parser::ParseNode *block = findFirst(ast, "Block");
+    if (block == nullptr) {
+      throw IrError("cannot find function block in AST");
+    }
+
+    emitBlock(*block, false);
+    if (!returned_) {
+      throw IrError("cannot find return expression in AST");
+    }
+
+    std::ostringstream output;
+    for (const std::string &line : global_instructions_) {
+      output << line << '\n';
+    }
+    if (!global_instructions_.empty()) {
+      output << '\n';
+    }
+    output << "fun @" << function_name_ << "(): i32 {\n%entry:\n";
+    for (const std::string &line : instructions_) {
+      output << "  " << line << '\n';
+    }
+    output << "}\n";
+    return output.str();
+  }
+
+private:
+  void collectGlobalConstants(const compiler::parser::ParseNode &node) {
+    if (node.symbol == "Block") {
+      return;
+    }
+    if (node.symbol == "TopItem") {
+      if (findDirectChild(node, "FuncDef") != nullptr) {
+        return;
+      }
+      if (findDirectChild(node, "Decl") != nullptr) {
+        collectDeclaration(node, true);
+      }
+      return;
+    }
+    for (const auto &child : node.children) {
+      collectGlobalConstants(*child);
     }
   }
-  return nullptr;
-}
 
-} // namespace
-
-std::string KoopaGenerator::generate(
-    const compiler::parser::ParseNode &ast) const {
-  std::ostringstream output;
-  generate(ast, output);
-  return output.str();
-}
-
-void KoopaGenerator::generate(const compiler::parser::ParseNode &ast,
-                              std::ostream &output) const {
-  std::string function_name = findFunctionName(ast);
-  std::string return_value = findReturnValue(ast);
-
-  output << "fun @" << function_name << "(): i32 {\n"
-         << "%entry:\n"
-         << "  ret " << return_value << "\n"
-         << "}\n";
-}
-
-std::string KoopaGenerator::findFunctionName(
-    const compiler::parser::ParseNode &ast) const {
-  const compiler::parser::ParseNode *function = findFirst(ast, "FuncDef");
-  if (function == nullptr) {
-    function = findFunctionTopItem(ast);
+  bool emitBlock(const compiler::parser::ParseNode &node, bool create_scope) {
+    if (node.symbol != "Block") {
+      throw IrError("expected Block node");
+    }
+    if (create_scope) {
+      scopes_.push_back({});
+    }
+    bool did_return = false;
+    for (const auto &child : node.children) {
+      if (child->symbol == "BlockItems") {
+        did_return = emitBlockItems(*child);
+        break;
+      }
+      if (child->symbol == "BlockItem") {
+        if (emitBlockItem(*child)) {
+          did_return = true;
+          break;
+        }
+      }
+      if (child->symbol == "Stmt") {
+        if (emitStmt(*child)) {
+          did_return = true;
+          break;
+        }
+      }
+      if (child->symbol == "Decl") {
+        collectDeclaration(*child, false);
+      }
+    }
+    if (create_scope) {
+      scopes_.pop_back();
+    }
+    return did_return;
   }
+
+  bool emitBlockItems(const compiler::parser::ParseNode &node) {
+    if (node.children.empty()) {
+      return false;
+    }
+    for (const auto &child : node.children) {
+      if (child->symbol == "BlockItem") {
+        if (emitBlockItem(*child)) {
+          return true;
+        }
+      } else if (child->symbol == "BlockItems") {
+        return emitBlockItems(*child);
+      }
+    }
+    return false;
+  }
+
+  bool emitBlockItem(const compiler::parser::ParseNode &node) {
+    for (const auto &child : node.children) {
+      if (child->symbol == "Decl") {
+        collectDeclaration(*child, false);
+        return false;
+      }
+      if (child->symbol == "Stmt") {
+        return emitStmt(*child);
+      }
+    }
+    throw IrError("invalid BlockItem node");
+  }
+
+  bool emitStmt(const compiler::parser::ParseNode &node) {
+    if (node.children.empty()) {
+      throw IrError("invalid Stmt node");
+    }
+
+    if (node.children[0]->symbol == "RETURN") {
+      const compiler::parser::ParseNode *return_exp =
+          findDirectChild(node, "ReturnExpOpt");
+      if (return_exp != nullptr && !return_exp->children.empty()) {
+        emit("ret " + emitExpression(*return_exp).operand);
+      } else {
+        const compiler::parser::ParseNode *old_exp = findDirectChild(node, "Exp");
+        emit("ret " + (old_exp == nullptr ? std::string("0")
+                                          : emitExpression(*old_exp).operand));
+      }
+      returned_ = true;
+      return true;
+    }
+
+    if (node.children[0]->symbol == "LVal") {
+      if (node.children.size() >= 3 && node.children[1]->symbol == "ASSIGN") {
+        std::string pointer = lookupVariablePointer(*node.children[0]);
+        Value value = emitExpression(*node.children[2]);
+        emit("store " + value.operand + ", " + pointer);
+        return false;
+      }
+    }
+
+    if (node.children[0]->symbol == "Block") {
+      return emitBlock(*node.children[0], true);
+    }
+
+    if (node.children[0]->symbol == "Exp") {
+      emitExpression(*node.children[0]);
+      return false;
+    }
+
+    if (node.children[0]->symbol == "SEMICOLON") {
+      return false;
+    }
+
+    throw IrError("unsupported statement in Koopa generation: " +
+                  node.children[0]->symbol);
+  }
+
+  void collectDeclaration(const compiler::parser::ParseNode &node,
+                          bool global_scope) {
+    if (node.symbol == "ConstDef") {
+      collectConstDef(node);
+      return;
+    }
+    if (node.symbol == "VarDef") {
+      collectVarDef(node, global_scope);
+      return;
+    }
+    for (const auto &child : node.children) {
+      collectDeclaration(*child, global_scope);
+    }
+  }
+
+  void collectConstDef(const compiler::parser::ParseNode &node) {
+    if (node.children.size() != 4 || node.children[0]->symbol != "IDENT") {
+      throw IrError("invalid ConstDef node");
+    }
+    if (hasNonEmptyChild(node, "ConstArrayDims")) {
+      throw IrError("array constant is not supported yet: " +
+                    node.children[0]->lexeme);
+    }
+    long long value =
+        expectConstant(emitExpression(*node.children[3]), "const initializer");
+    define(node.children[0]->lexeme, Symbol{SymbolKind::Constant, value, ""});
+  }
+
+  void collectVarDef(const compiler::parser::ParseNode &node,
+                     bool global_scope) {
+    if (node.children.size() < 2 || node.children[0]->symbol != "IDENT") {
+      throw IrError("invalid VarDef node");
+    }
+    if (hasNonEmptyChild(node, "ConstArrayDims")) {
+      throw IrError("array variable is not supported yet: " +
+                    node.children[0]->lexeme);
+    }
+
+    const std::string &name = node.children[0]->lexeme;
+    if (global_scope) {
+      long long value = 0;
+      bool has_initializer = false;
+      if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
+        has_initializer = true;
+        value = expectConstant(emitExpression(*node.children[2]->children[1]),
+                               "global variable initializer");
+      }
+      std::string pointer = newGlobalValue(name);
+      global_instructions_.push_back("global " + pointer + " = alloc i32, " +
+                                     (has_initializer ? std::to_string(value)
+                                                      : "zeroinit"));
+      define(name, Symbol{SymbolKind::Variable, 0, pointer});
+      return;
+    }
+
+    std::string pointer = newNamedValue(name);
+    emit(pointer + " = alloc i32");
+    define(name, Symbol{SymbolKind::Variable, 0, pointer});
+
+    Value initial_value;
+    if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
+      initial_value = emitExpression(*node.children[2]->children[1]);
+    } else {
+      initial_value = makeConstant(0);
+    }
+    emit("store " + initial_value.operand + ", " + pointer);
+  }
+
+  Value emitExpression(const compiler::parser::ParseNode &node) {
+    if (node.symbol == "INT_CONST") {
+      char *end = nullptr;
+      long long value = std::strtoll(node.lexeme.c_str(), &end, 0);
+      if (end == nullptr || *end != '\0') {
+        throw IrError("invalid integer literal: " + node.lexeme);
+      }
+      return makeConstant(value);
+    }
+
+    if (node.symbol == "Number") {
+      return emitSingleChild(node);
+    }
+
+    if (node.symbol == "LVal") {
+      return emitLVal(node);
+    }
+
+    if (node.symbol == "Exp" || node.symbol == "ConstExp" ||
+        node.symbol == "ConstInitVal" || node.symbol == "InitVal" ||
+        node.symbol == "ReturnExpOpt" || node.symbol == "PrimaryExp") {
+      if (node.children.size() == 3 && node.children[0]->symbol == "LPAREN") {
+        return emitExpression(*node.children[1]);
+      }
+      return emitSingleChild(node);
+    }
+
+    if (node.symbol == "UnaryExp") {
+      return emitUnaryExp(node);
+    }
+
+    if (node.symbol == "MulExp") {
+      return emitBinaryTail(node, "MulExpTail");
+    }
+    if (node.symbol == "AddExp") {
+      return emitBinaryTail(node, "AddExpTail");
+    }
+    if (node.symbol == "RelExp") {
+      return emitBinaryTail(node, "RelExpTail");
+    }
+    if (node.symbol == "EqExp") {
+      return emitBinaryTail(node, "EqExpTail");
+    }
+    if (node.symbol == "LAndExp") {
+      return emitBinaryTail(node, "LAndExpTail");
+    }
+    if (node.symbol == "LOrExp") {
+      return emitBinaryTail(node, "LOrExpTail");
+    }
+
+    throw IrError("unsupported expression node: " + node.symbol);
+  }
+
+  Value emitSingleChild(const compiler::parser::ParseNode &node) {
+    if (node.children.size() != 1) {
+      throw IrError("invalid expression wrapper node: " + node.symbol);
+    }
+    return emitExpression(*node.children[0]);
+  }
+
+  Value emitUnaryExp(const compiler::parser::ParseNode &node) {
+    if (node.children.size() == 1) {
+      return emitExpression(*node.children[0]);
+    }
+    if (node.children.size() == 2) {
+      const std::string &op = node.children[0]->children[0]->symbol;
+      Value value = emitExpression(*node.children[1]);
+      if (op == "PLUS") {
+        return value;
+      }
+      if (value.constant) {
+        if (op == "MINUS") {
+          return makeConstant(-value.const_value);
+        }
+        if (op == "NOT") {
+          return makeConstant(value.const_value == 0 ? 1 : 0);
+        }
+      }
+      if (op == "MINUS") {
+        return emitBinary("MINUS", makeConstant(0), value);
+      }
+      if (op == "NOT") {
+        return emitBinary("EQ", value, makeConstant(0));
+      }
+    }
+    throw IrError("unsupported UnaryExp node");
+  }
+
+  Value emitBinaryTail(const compiler::parser::ParseNode &node,
+                       const std::string &tail_symbol) {
+    if (node.children.size() != 2 || node.children[1]->symbol != tail_symbol) {
+      throw IrError("invalid " + node.symbol + " node");
+    }
+    Value lhs = emitExpression(*node.children[0]);
+    return emitTail(*node.children[1], lhs);
+  }
+
+  Value emitTail(const compiler::parser::ParseNode &node, Value lhs) {
+    if (node.children.empty()) {
+      return lhs;
+    }
+    if (node.children.size() != 3) {
+      throw IrError("invalid expression tail node: " + node.symbol);
+    }
+
+    const std::string &op = node.children[0]->symbol;
+    Value rhs = emitExpression(*node.children[1]);
+    Value combined = emitBinary(op, lhs, rhs);
+    return emitTail(*node.children[2], combined);
+  }
+
+  Value emitBinary(const std::string &op, Value lhs, Value rhs) {
+    if (lhs.constant && rhs.constant) {
+      return makeConstant(foldBinary(op, lhs.const_value, rhs.const_value));
+    }
+    std::string result = newTemp();
+    emit(result + " = " + koopaOp(op) + " " + lhs.operand + ", " +
+         rhs.operand);
+    return Value{false, 0, result};
+  }
+
+  Value emitLVal(const compiler::parser::ParseNode &node) {
+    if (node.children.empty() || node.children[0]->symbol != "IDENT") {
+      throw IrError("invalid LVal node");
+    }
+    if (node.children.size() > 1 && !node.children[1]->children.empty()) {
+      throw IrError("array LVal is not supported yet: " +
+                    node.children[0]->lexeme);
+    }
+
+    const Symbol &symbol = lookup(node.children[0]->lexeme);
+    if (symbol.kind == SymbolKind::Constant) {
+      return makeConstant(symbol.const_value);
+    }
+
+    std::string loaded = newTemp();
+    emit(loaded + " = load " + symbol.pointer);
+    return Value{false, 0, loaded};
+  }
+
+  std::string lookupVariablePointer(const compiler::parser::ParseNode &lval) {
+    if (lval.children.empty() || lval.children[0]->symbol != "IDENT") {
+      throw IrError("invalid assignment LVal");
+    }
+    if (lval.children.size() > 1 && !lval.children[1]->children.empty()) {
+      throw IrError("array assignment is not supported yet: " +
+                    lval.children[0]->lexeme);
+    }
+
+    const Symbol &symbol = lookup(lval.children[0]->lexeme);
+    if (symbol.kind != SymbolKind::Variable) {
+      throw IrError("cannot assign to constant: " + lval.children[0]->lexeme);
+    }
+    return symbol.pointer;
+  }
+
+  Value makeConstant(long long value) const {
+    return Value{true, value, toOperand(value)};
+  }
+
+  void emit(std::string instruction) {
+    instructions_.push_back(std::move(instruction));
+  }
+
+  std::string newTemp() { return "%" + std::to_string(temp_id_++); }
+
+  std::string newGlobalValue(const std::string &name) {
+    std::string base = "@" + name;
+    std::string candidate = base;
+    int suffix = 0;
+    while (used_values_.find(candidate) != used_values_.end()) {
+      candidate = base + "_" + std::to_string(++suffix);
+    }
+    used_values_.insert(candidate);
+    return candidate;
+  }
+
+  std::string newNamedValue(const std::string &name) {
+    std::string base = "%" + name;
+    std::string candidate = base;
+    int suffix = 0;
+    while (used_values_.find(candidate) != used_values_.end()) {
+      candidate = base + "_" + std::to_string(++suffix);
+    }
+    used_values_.insert(candidate);
+    return candidate;
+  }
+
+  void define(const std::string &name, Symbol symbol) {
+    scopes_.back()[name] = std::move(symbol);
+  }
+
+  const Symbol &lookup(const std::string &name) const {
+    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+      auto found = scope->find(name);
+      if (found != scope->end()) {
+        return found->second;
+      }
+    }
+    throw IrError("unknown identifier: " + name);
+  }
+
+  std::string function_name_;
+  std::vector<std::string> global_instructions_;
+  std::vector<std::string> instructions_;
+  std::vector<std::map<std::string, Symbol>> scopes_;
+  std::set<std::string> used_values_;
+  int temp_id_ = 0;
+  bool returned_ = false;
+};
+
+std::string findFunctionName(const compiler::parser::ParseNode &ast) {
+  const compiler::parser::ParseNode *function = findFirst(ast, "FuncDef");
   if (function == nullptr) {
     throw IrError("cannot find function definition in AST");
   }
 
   const compiler::parser::ParseNode *ident = findDirectChild(*function, "IDENT");
   if (ident == nullptr || ident->lexeme.empty()) {
+    ident = findFirst(*function, "IDENT");
+  }
+  if (ident == nullptr || ident->lexeme.empty()) {
     throw IrError("cannot find function name in AST");
   }
   return ident->lexeme;
 }
 
-std::string KoopaGenerator::findReturnValue(
+} // namespace
+
+std::string KoopaGenerator::generate(
     const compiler::parser::ParseNode &ast) const {
-  std::map<std::string, long long> symbols;
-  collectGlobalDeclarations(ast, symbols);
-  const compiler::parser::ParseNode *return_exp = nullptr;
-  const compiler::parser::ParseNode *block = findFirst(ast, "Block");
-  if (block == nullptr) {
-    throw IrError("cannot find function block in AST");
-  }
-  collectBlockItems(*block, symbols, return_exp);
-  if (return_exp == nullptr) {
-    throw IrError("cannot find return expression in AST");
-  }
-  return std::to_string(evaluateExpression(*return_exp, symbols));
+  return FunctionBuilder(findFunctionName(ast)).generate(ast);
 }
 
-void KoopaGenerator::collectGlobalDeclarations(
-    const compiler::parser::ParseNode &node,
-    std::map<std::string, long long> &symbols) const {
-  if (node.symbol == "Block") {
-    return;
-  }
-
-  if (node.symbol == "TopItem") {
-    if (findDirectChild(node, "FuncDef") != nullptr || isTopLevelFunction(node)) {
-      return;
-    }
-
-    if (findDirectChild(node, "Decl") != nullptr) {
-      collectDeclaration(node, symbols);
-      return;
-    }
-
-    if (!node.children.empty() && node.children[0]->symbol == "INT") {
-      const compiler::parser::ParseNode *ident = findDirectChild(node, "IDENT");
-      const compiler::parser::ParseNode *tail =
-          findDirectChild(node, "IntTopTail");
-      if (ident == nullptr || tail == nullptr) {
-        throw IrError("invalid global variable declaration");
-      }
-
-      long long value = 0;
-      if (!tail->children.empty() &&
-          tail->children[0]->symbol == "VarDefAfterIdent" &&
-          !tail->children[0]->children.empty()) {
-        value = evaluateExpression(*tail->children[0]->children[1], symbols);
-      }
-      symbols[ident->lexeme] = value;
-
-      for (const auto &child : tail->children) {
-        if (child->symbol == "VarDefList") {
-          collectDeclaration(*child, symbols);
-        }
-      }
-      return;
-    }
-
-    collectDeclaration(node, symbols);
-    return;
-  }
-
-  for (const auto &child : node.children) {
-    collectGlobalDeclarations(*child, symbols);
-  }
-}
-
-long long KoopaGenerator::evaluateExpression(
-    const compiler::parser::ParseNode &node,
-    const std::map<std::string, long long> &symbols) const {
-  if (node.symbol == "INT_CONST") {
-    char *end = nullptr;
-    long long value = std::strtoll(node.lexeme.c_str(), &end, 0);
-    if (end == nullptr || *end != '\0') {
-      throw IrError("invalid integer literal: " + node.lexeme);
-    }
-    return value;
-  }
-
-  if (node.symbol == "Number") {
-    if (node.children.size() != 1) {
-      throw IrError("invalid Number node");
-    }
-    return evaluateExpression(*node.children[0], symbols);
-  }
-
-  if (node.symbol == "LVal") {
-    if (node.children.empty() || node.children[0]->symbol != "IDENT") {
-      throw IrError("invalid LVal node");
-    }
-    if (node.children.size() > 1 && !node.children[1]->children.empty()) {
-      throw IrError("array LVal cannot be folded as scalar: " +
-                    node.children[0]->lexeme);
-    }
-    auto found = symbols.find(node.children[0]->lexeme);
-    if (found == symbols.end()) {
-      throw IrError("unknown identifier: " + node.children[0]->lexeme);
-    }
-    return found->second;
-  }
-
-  if (node.symbol == "Exp" || node.symbol == "ConstExp" ||
-      node.symbol == "ConstInitVal" || node.symbol == "InitVal" ||
-      node.symbol == "ReturnExpOpt") {
-    if (node.children.size() != 1) {
-      throw IrError("invalid expression wrapper node: " + node.symbol);
-    }
-    return evaluateExpression(*node.children[0], symbols);
-  }
-
-  if (node.symbol == "LOrExp") {
-    if (node.children.size() != 2) {
-      throw IrError("invalid LOrExp node");
-    }
-    long long lhs = evaluateExpression(*node.children[0], symbols);
-    return evaluateLOrExpTail(*node.children[1], lhs, symbols);
-  }
-
-  if (node.symbol == "LAndExp") {
-    if (node.children.size() != 2) {
-      throw IrError("invalid LAndExp node");
-    }
-    long long lhs = evaluateExpression(*node.children[0], symbols);
-    return evaluateLAndExpTail(*node.children[1], lhs, symbols);
-  }
-
-  if (node.symbol == "EqExp") {
-    if (node.children.size() != 2) {
-      throw IrError("invalid EqExp node");
-    }
-    long long lhs = evaluateExpression(*node.children[0], symbols);
-    return evaluateEqExpTail(*node.children[1], lhs, symbols);
-  }
-
-  if (node.symbol == "RelExp") {
-    if (node.children.size() != 2) {
-      throw IrError("invalid RelExp node");
-    }
-    long long lhs = evaluateExpression(*node.children[0], symbols);
-    return evaluateRelExpTail(*node.children[1], lhs, symbols);
-  }
-
-  if (node.symbol == "AddExp") {
-    if (node.children.size() != 2) {
-      throw IrError("invalid AddExp node");
-    }
-    long long lhs = evaluateExpression(*node.children[0], symbols);
-    return evaluateAddExpTail(*node.children[1], lhs, symbols);
-  }
-
-  if (node.symbol == "MulExp") {
-    if (node.children.size() != 2) {
-      throw IrError("invalid MulExp node");
-    }
-    long long lhs = evaluateExpression(*node.children[0], symbols);
-    return evaluateMulExpTail(*node.children[1], lhs, symbols);
-  }
-
-  if (node.symbol == "UnaryExp") {
-    if (node.children.size() == 1) {
-      return evaluateExpression(*node.children[0], symbols);
-    }
-    if (node.children.size() == 2) {
-      const std::string &op = node.children[0]->children[0]->symbol;
-      long long value = evaluateExpression(*node.children[1], symbols);
-      if (op == "PLUS") {
-        return value;
-      }
-      if (op == "MINUS") {
-        return -value;
-      }
-      if (op == "NOT") {
-        return value == 0 ? 1 : 0;
-      }
-    }
-    throw IrError("invalid UnaryExp node");
-  }
-
-  if (node.symbol == "PrimaryExp") {
-    if (node.children.size() == 1) {
-      return evaluateExpression(*node.children[0], symbols);
-    }
-    if (node.children.size() == 3) {
-      return evaluateExpression(*node.children[1], symbols);
-    }
-    throw IrError("invalid PrimaryExp node");
-  }
-
-  throw IrError("unsupported expression node: " + node.symbol);
-}
-
-long long KoopaGenerator::evaluateAddExpTail(
-    const compiler::parser::ParseNode &node, long long lhs,
-    const std::map<std::string, long long> &symbols) const {
-  if (node.symbol != "AddExpTail") {
-    throw IrError("expected AddExpTail node");
-  }
-  if (node.children.empty()) {
-    return lhs;
-  }
-  if (node.children.size() != 3) {
-    throw IrError("invalid AddExpTail node");
-  }
-
-  const std::string &op = node.children[0]->symbol;
-  long long rhs = evaluateExpression(*node.children[1], symbols);
-  if (op == "PLUS") {
-    return evaluateAddExpTail(*node.children[2], lhs + rhs, symbols);
-  }
-  if (op == "MINUS") {
-    return evaluateAddExpTail(*node.children[2], lhs - rhs, symbols);
-  }
-  throw IrError("invalid AddExp operator: " + op);
-}
-
-long long KoopaGenerator::evaluateMulExpTail(
-    const compiler::parser::ParseNode &node, long long lhs,
-    const std::map<std::string, long long> &symbols) const {
-  if (node.symbol != "MulExpTail") {
-    throw IrError("expected MulExpTail node");
-  }
-  if (node.children.empty()) {
-    return lhs;
-  }
-  if (node.children.size() != 3) {
-    throw IrError("invalid MulExpTail node");
-  }
-
-  const std::string &op = node.children[0]->symbol;
-  long long rhs = evaluateExpression(*node.children[1], symbols);
-  if (op == "STAR") {
-    return evaluateMulExpTail(*node.children[2], lhs * rhs, symbols);
-  }
-  if (op == "SLASH") {
-    return evaluateMulExpTail(*node.children[2], lhs / rhs, symbols);
-  }
-  if (op == "PERCENT") {
-    return evaluateMulExpTail(*node.children[2], lhs % rhs, symbols);
-  }
-  throw IrError("invalid MulExp operator: " + op);
-}
-
-long long KoopaGenerator::evaluateRelExpTail(
-    const compiler::parser::ParseNode &node, long long lhs,
-    const std::map<std::string, long long> &symbols) const {
-  if (node.symbol != "RelExpTail") {
-    throw IrError("expected RelExpTail node");
-  }
-  if (node.children.empty()) {
-    return lhs;
-  }
-  if (node.children.size() != 3) {
-    throw IrError("invalid RelExpTail node");
-  }
-
-  const std::string &op = node.children[0]->symbol;
-  long long rhs = evaluateExpression(*node.children[1], symbols);
-  long long value = 0;
-  if (op == "LT") {
-    value = lhs < rhs;
-  } else if (op == "GT") {
-    value = lhs > rhs;
-  } else if (op == "LE") {
-    value = lhs <= rhs;
-  } else if (op == "GE") {
-    value = lhs >= rhs;
-  } else {
-    throw IrError("invalid RelExp operator: " + op);
-  }
-  return evaluateRelExpTail(*node.children[2], value, symbols);
-}
-
-long long KoopaGenerator::evaluateEqExpTail(
-    const compiler::parser::ParseNode &node, long long lhs,
-    const std::map<std::string, long long> &symbols) const {
-  if (node.symbol != "EqExpTail") {
-    throw IrError("expected EqExpTail node");
-  }
-  if (node.children.empty()) {
-    return lhs;
-  }
-  if (node.children.size() != 3) {
-    throw IrError("invalid EqExpTail node");
-  }
-
-  const std::string &op = node.children[0]->symbol;
-  long long rhs = evaluateExpression(*node.children[1], symbols);
-  long long value = 0;
-  if (op == "EQ") {
-    value = lhs == rhs;
-  } else if (op == "NE") {
-    value = lhs != rhs;
-  } else {
-    throw IrError("invalid EqExp operator: " + op);
-  }
-  return evaluateEqExpTail(*node.children[2], value, symbols);
-}
-
-long long KoopaGenerator::evaluateLAndExpTail(
-    const compiler::parser::ParseNode &node, long long lhs,
-    const std::map<std::string, long long> &symbols) const {
-  if (node.symbol != "LAndExpTail") {
-    throw IrError("expected LAndExpTail node");
-  }
-  if (node.children.empty()) {
-    return lhs;
-  }
-  if (node.children.size() != 3) {
-    throw IrError("invalid LAndExpTail node");
-  }
-
-  long long rhs = evaluateExpression(*node.children[1], symbols);
-  return evaluateLAndExpTail(*node.children[2], (lhs != 0) && (rhs != 0),
-                             symbols);
-}
-
-long long KoopaGenerator::evaluateLOrExpTail(
-    const compiler::parser::ParseNode &node, long long lhs,
-    const std::map<std::string, long long> &symbols) const {
-  if (node.symbol != "LOrExpTail") {
-    throw IrError("expected LOrExpTail node");
-  }
-  if (node.children.empty()) {
-    return lhs;
-  }
-  if (node.children.size() != 3) {
-    throw IrError("invalid LOrExpTail node");
-  }
-
-  long long rhs = evaluateExpression(*node.children[1], symbols);
-  return evaluateLOrExpTail(*node.children[2], (lhs != 0) || (rhs != 0),
-                            symbols);
-}
-
-void KoopaGenerator::collectBlockItems(
-    const compiler::parser::ParseNode &node,
-    std::map<std::string, long long> &symbols,
-    const compiler::parser::ParseNode *&return_exp) const {
-  if (node.symbol == "Decl") {
-    collectDeclaration(node, symbols);
-    return;
-  }
-
-  if (node.symbol == "Stmt") {
-    if (!node.children.empty() && node.children[0]->symbol == "RETURN") {
-      for (const auto &child : node.children) {
-        if (child->symbol == "ReturnExpOpt" && !child->children.empty()) {
-          return_exp = child.get();
-          return;
-        }
-        if (child->symbol == "Exp") {
-          return_exp = child.get();
-          return;
-        }
-      }
-    }
-  }
-
-  for (const auto &child : node.children) {
-    collectBlockItems(*child, symbols, return_exp);
-  }
-}
-
-void KoopaGenerator::collectDeclaration(
-    const compiler::parser::ParseNode &node,
-    std::map<std::string, long long> &symbols) const {
-  if (node.symbol == "ConstDef") {
-    if (node.children.size() != 4 || node.children[0]->symbol != "IDENT") {
-      throw IrError("invalid ConstDef node");
-    }
-    if (!node.children[1]->children.empty()) {
-      throw IrError("array constant cannot be folded as scalar: " +
-                    node.children[0]->lexeme);
-    }
-    symbols[node.children[0]->lexeme] =
-        evaluateExpression(*node.children[3], symbols);
-    return;
-  }
-
-  if (node.symbol == "VarDef") {
-    if (node.children.empty() || node.children[0]->symbol != "IDENT") {
-      throw IrError("invalid VarDef node");
-    }
-    long long value = 0;
-    if (node.children.size() >= 2 && !node.children[1]->children.empty()) {
-      throw IrError("array variable cannot be folded as scalar: " +
-                    node.children[0]->lexeme);
-    }
-    if (node.children.size() == 3 && !node.children[2]->children.empty()) {
-      value = evaluateExpression(*node.children[2]->children[1], symbols);
-    }
-    symbols[node.children[0]->lexeme] = value;
-    return;
-  }
-
-  for (const auto &child : node.children) {
-    collectDeclaration(*child, symbols);
-  }
+void KoopaGenerator::generate(const compiler::parser::ParseNode &ast,
+                              std::ostream &output) const {
+  output << generate(ast);
 }
 
 } // namespace compiler::ir
