@@ -8,7 +8,7 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     {"UTF8_BOM", "\xEF\xBB\xBF", TokenRuleAction::Skip},
     {"WHITESPACE", "[ \\t\\n\\r\\v\\f]+", TokenRuleAction::Skip},
     {"LINE_COMMENT", "//.*", TokenRuleAction::Skip},
-    {"BLOCK_COMMENT", "/[*]([^*]|[*][^/])*[*]/", TokenRuleAction::Skip},
+    {"BLOCK_COMMENT", "/[*]([^*]|[*]+[^*/])*[*]+/", TokenRuleAction::Skip},
 
     // Keywords must appear before IDENT, matching Flex rule priority.
     {"CONST", "const"},

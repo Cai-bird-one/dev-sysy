@@ -52,7 +52,7 @@ TEST_CASE(token_rules_tokenize_flex_style_sample) {
 
 TEST_CASE(token_rules_skip_block_comments) {
   Lexer lexer = buildDefaultLexer();
-  std::istringstream input("int main/* comment */() { return 0; }");
+  std::istringstream input("int main/* comment *//***/() { /****/return 0; }");
   std::vector<Token> tokens = lexer.tokenize(input);
 
   EXPECT_EQ(tokens.size(), 9u);
