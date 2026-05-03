@@ -174,3 +174,70 @@ TEST_CASE(koopa_generator_initializes_unassigned_local_variables) {
             "  ret %0\n"
             "}\n");
 }
+
+TEST_CASE(koopa_generator_allows_local_scope_to_shadow_globals) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input("int a=1; int main(){int a=2; return a;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "global @a = alloc i32, 1\n"
+            "\n"
+            "fun @main(): i32 {\n%entry:\n"
+            "  %a = alloc i32\n"
+            "  store 2, %a\n"
+            "  %0 = load %a\n"
+            "  ret %0\n"
+            "}\n");
+}
+
+TEST_CASE(koopa_generator_resolves_nested_block_scopes) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input("int main(){int a=1; {int a=2;} return a;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "fun @main(): i32 {\n%entry:\n"
+            "  %a = alloc i32\n"
+            "  store 1, %a\n"
+            "  %a_1 = alloc i32\n"
+            "  store 2, %a_1\n"
+            "  %0 = load %a\n"
+            "  ret %0\n"
+            "}\n");
+}
+
+TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream local_input("int main(){int a; const int a=1; return a;}");
+  std::unique_ptr<parser::ParseNode> ast =
+      parser.parse(lexer.tokenize(local_input));
+
+  bool rejected_local = false;
+  try {
+    generator.generate(*ast);
+  } catch (const ir::IrError &) {
+    rejected_local = true;
+  }
+  EXPECT_TRUE(rejected_local);
+
+  std::istringstream global_input("int a; const int a=1; int main(){return 0;}");
+  ast = parser.parse(lexer.tokenize(global_input));
+
+  bool rejected_global = false;
+  try {
+    generator.generate(*ast);
+  } catch (const ir::IrError &) {
+    rejected_global = true;
+  }
+  EXPECT_TRUE(rejected_global);
+}

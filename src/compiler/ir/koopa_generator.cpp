@@ -168,7 +168,7 @@ public:
       throw IrError("cannot find function block in AST");
     }
 
-    emitBlock(*block, false);
+    emitBlock(*block, true);
     if (!returned_) {
       throw IrError("cannot find return expression in AST");
     }
@@ -573,6 +573,9 @@ private:
   }
 
   void define(const std::string &name, Symbol symbol) {
+    if (scopes_.back().find(name) != scopes_.back().end()) {
+      throw IrError("duplicate identifier in current scope: " + name);
+    }
     scopes_.back()[name] = std::move(symbol);
   }
 
