@@ -81,7 +81,7 @@ case "${command}" in
       exit 1
     fi
     docker_run bash -lc \
-      'clang++ -std=c++17 -Isrc tools/dump_tokens.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/token_rules.cpp -o /tmp/dump_tokens && /tmp/dump_tokens "$1"' \
+      'clang++ -std=c++17 -Isrc tools/dump_tokens.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/automaton.cpp src/compiler/lexer/regex.cpp src/compiler/lexer/token_rules.cpp -o /tmp/dump_tokens && /tmp/dump_tokens "$1"' \
       bash "$1"
     ;;
   parse)
@@ -94,7 +94,7 @@ case "${command}" in
       exit 1
     fi
     docker_run bash -lc \
-      'clang++ -std=c++17 -Isrc tools/dump_parse_tree.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/grammar_rules.cpp -o /tmp/dump_parse_tree && /tmp/dump_parse_tree "$1"' \
+      'clang++ -std=c++17 -Isrc tools/dump_parse_tree.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/automaton.cpp src/compiler/lexer/regex.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/grammar_rules.cpp -o /tmp/dump_parse_tree && /tmp/dump_parse_tree "$1"' \
       bash "$1"
     ;;
   ir)
@@ -107,7 +107,7 @@ case "${command}" in
       exit 1
     fi
     docker_run bash -lc \
-      'clang++ -std=c++17 -Isrc tools/dump_koopa.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/grammar_rules.cpp src/compiler/ir/koopa_generator.cpp -o /tmp/dump_koopa && /tmp/dump_koopa "$1"' \
+      'clang++ -std=c++17 -Isrc tools/dump_koopa.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/automaton.cpp src/compiler/lexer/regex.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/grammar_rules.cpp src/compiler/ir/koopa_generator.cpp -o /tmp/dump_koopa && /tmp/dump_koopa "$1"' \
       bash "$1"
     ;;
   run)

@@ -89,6 +89,7 @@ public:
 
 private:
   friend class LexerBuilder;
+  friend Lexer buildLexerAutomaton(const std::vector<TokenSpec> &tokens);
 
   struct DfaState {
     std::array<int, 256> transitions{};
