@@ -444,6 +444,7 @@ private:
           if (!dimensions.empty()) {
             stack_sizes_[parts[0]] = elementCount(dimensions) * 4;
             pointer_dimensions_[parts[0]] = dimensions;
+            aggregate_allocs_.insert(parts[0]);
           }
         } else if (parts[2] == "getelemptr") {
           std::vector<int> base_dims = dimensionsForPointer(parts[3]);
@@ -683,7 +684,7 @@ private:
     auto offset_found = stack_offsets_.find(pointer);
     if (dims_found != pointer_dimensions_.end() &&
         offset_found != stack_offsets_.end()) {
-      if (stackSize(pointer) > 4) {
+      if (aggregate_allocs_.find(pointer) != aggregate_allocs_.end()) {
         loadStackAddress(offset_found->second, reg, output);
       } else {
         loadFromStack(offset_found->second, reg, output);
@@ -818,6 +819,7 @@ private:
   std::map<std::string, int> stack_offsets_;
   std::map<std::string, int> stack_sizes_;
   std::map<std::string, std::vector<int>> pointer_dimensions_;
+  std::set<std::string> aggregate_allocs_;
   int frame_size_ = 0;
   int ra_offset_ = 0;
   int outgoing_arg_size_ = 0;

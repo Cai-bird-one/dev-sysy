@@ -111,6 +111,20 @@ TEST_CASE(riscv_generator_handles_arrays_and_getelemptr) {
   EXPECT_TRUE(riscv.find("sw t0, 0(t1)") != std::string::npos);
 }
 
+TEST_CASE(riscv_generator_treats_single_element_arrays_as_stack_addresses) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("fun @main(): i32 {\n"
+                                         "%entry:\n"
+                                         "  %a = alloc [i32, 1]\n"
+                                         "  %0 = getelemptr %a, 0\n"
+                                         "  store 7, %0\n"
+                                         "  %1 = load %0\n"
+                                         "  ret %1\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("addi t0, sp, ") != std::string::npos);
+}
+
 TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
   riscv::RiscvGenerator generator;
   std::string riscv = generator.generate(
