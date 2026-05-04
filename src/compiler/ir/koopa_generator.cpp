@@ -181,6 +181,9 @@ public:
       output << '\n';
     }
     output << "fun @" << function_name_ << "(): i32 {\n%entry:\n";
+    for (const std::string &line : entry_allocs_) {
+      output << "  " << line << '\n';
+    }
     for (const std::string &line : instructions_) {
       if (!line.empty() && line.back() == ':') {
         output << line << '\n';
@@ -467,7 +470,7 @@ private:
     }
 
     std::string pointer = newNamedValue(name);
-    emit(pointer + " = alloc i32");
+    emitLocalAlloc(pointer + " = alloc i32");
 
     Value initial_value;
     if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
@@ -660,7 +663,18 @@ private:
     instructions_.push_back(std::move(instruction));
   }
 
-  void emitLabel(const std::string &label) { emit(label + ":"); }
+  void emitLocalAlloc(std::string instruction) {
+    if (in_entry_block_) {
+      emit(std::move(instruction));
+    } else {
+      entry_allocs_.push_back(std::move(instruction));
+    }
+  }
+
+  void emitLabel(const std::string &label) {
+    in_entry_block_ = false;
+    emit(label + ":");
+  }
 
   std::string newTemp() { return "%" + std::to_string(temp_id_++); }
 
@@ -709,6 +723,7 @@ private:
 
   std::string function_name_;
   std::vector<std::string> global_instructions_;
+  std::vector<std::string> entry_allocs_;
   std::vector<std::string> instructions_;
   std::vector<std::map<std::string, Symbol>> scopes_;
   std::set<std::string> used_values_;
@@ -719,6 +734,7 @@ private:
   std::vector<LoopLabels> loop_stack_;
   int temp_id_ = 0;
   int label_id_ = 0;
+  bool in_entry_block_ = true;
   bool returned_ = false;
 };
 

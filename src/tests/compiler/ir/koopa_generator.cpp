@@ -391,6 +391,22 @@ TEST_CASE(koopa_generator_emits_break_and_continue) {
   EXPECT_TRUE(koopa.find("%while_end_2:\n") != std::string::npos);
 }
 
+TEST_CASE(koopa_generator_hoists_loop_body_allocs_to_entry) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int main(){int i=0;while(i<3){int x=i;i=i+1;if(i==2)continue;}return i;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("%x = alloc i32\n  %i = alloc i32") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("%while_body_1:\n  %3 = load %i\n  store %3, %x") !=
+              std::string::npos);
+}
+
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
   lexer::Lexer lexer = lexer::buildDefaultLexer();
   parser::Parser parser = parser::buildDefaultParser();
