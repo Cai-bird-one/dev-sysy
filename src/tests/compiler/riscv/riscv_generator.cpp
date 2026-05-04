@@ -98,3 +98,20 @@ TEST_CASE(riscv_generator_handles_comparisons) {
   EXPECT_TRUE(riscv.find("slt t0, t0, t1") != std::string::npos);
   EXPECT_TRUE(riscv.find("seqz t0, t0") != std::string::npos);
 }
+
+TEST_CASE(riscv_generator_handles_branches_and_jumps) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("fun @main(): i32 {\n"
+                                         "%entry:\n"
+                                         "  br 1, %then, %else\n"
+                                         "%then:\n"
+                                         "  ret 1\n"
+                                         "%else:\n"
+                                         "  jump %then\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("bnez t0, then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("j else") != std::string::npos);
+  EXPECT_TRUE(riscv.find("then:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("j then") != std::string::npos);
+}

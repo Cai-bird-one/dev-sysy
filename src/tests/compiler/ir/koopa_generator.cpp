@@ -291,6 +291,61 @@ TEST_CASE(koopa_generator_booleanizes_runtime_logical_operands) {
             "}\n");
 }
 
+TEST_CASE(koopa_generator_emits_if_else_branches) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input("int main(){int a=0;if(1)a=1;else a=2;return a;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "fun @main(): i32 {\n%entry:\n"
+            "  %a = alloc i32\n"
+            "  store 0, %a\n"
+            "  br 1, %if_then_0, %if_else_1\n"
+            "%if_then_0:\n"
+            "  store 1, %a\n"
+            "  jump %if_end_2\n"
+            "%if_else_1:\n"
+            "  store 2, %a\n"
+            "  jump %if_end_2\n"
+            "%if_end_2:\n"
+            "  %0 = load %a\n"
+            "  ret %0\n"
+            "}\n");
+}
+
+TEST_CASE(koopa_generator_matches_else_to_nearest_if) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int main(){int a=0;if(1)if(0)a=1;else a=2;return a;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "fun @main(): i32 {\n%entry:\n"
+            "  %a = alloc i32\n"
+            "  store 0, %a\n"
+            "  br 1, %if_then_0, %if_end_2\n"
+            "%if_then_0:\n"
+            "  br 0, %if_then_3, %if_else_4\n"
+            "%if_then_3:\n"
+            "  store 1, %a\n"
+            "  jump %if_end_5\n"
+            "%if_else_4:\n"
+            "  store 2, %a\n"
+            "  jump %if_end_5\n"
+            "%if_end_5:\n"
+            "  jump %if_end_2\n"
+            "%if_end_2:\n"
+            "  %0 = load %a\n"
+            "  ret %0\n"
+            "}\n");
+}
+
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
   lexer::Lexer lexer = lexer::buildDefaultLexer();
   parser::Parser parser = parser::buildDefaultParser();

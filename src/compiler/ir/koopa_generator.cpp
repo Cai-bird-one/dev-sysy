@@ -182,7 +182,11 @@ public:
     }
     output << "fun @" << function_name_ << "(): i32 {\n%entry:\n";
     for (const std::string &line : instructions_) {
-      output << "  " << line << '\n';
+      if (!line.empty() && line.back() == ':') {
+        output << line << '\n';
+      } else {
+        output << "  " << line << '\n';
+      }
     }
     output << "}\n";
     return output.str();
@@ -299,6 +303,10 @@ private:
       }
     }
 
+    if (node.children[0]->symbol == "IF") {
+      return emitIfStmt(node);
+    }
+
     if (node.children[0]->symbol == "Block") {
       return emitBlock(*node.children[0], true);
     }
@@ -314,6 +322,47 @@ private:
 
     throw IrError("unsupported statement in Koopa generation: " +
                   node.children[0]->symbol);
+  }
+
+  bool emitIfStmt(const compiler::parser::ParseNode &node) {
+    if (node.children.size() != 6) {
+      throw IrError("invalid if statement node");
+    }
+
+    Value condition = emitBoolean(emitExpression(*node.children[2]));
+    std::string then_label = newLabel("if_then");
+    std::string else_label = newLabel("if_else");
+    std::string end_label = newLabel("if_end");
+    const compiler::parser::ParseNode &then_stmt = *node.children[4];
+    const compiler::parser::ParseNode &else_opt = *node.children[5];
+    bool has_else = !else_opt.children.empty();
+
+    emit("br " + condition.operand + ", " + then_label + ", " +
+         (has_else ? else_label : end_label));
+
+    emitLabel(then_label);
+    bool then_returned = emitStmt(then_stmt);
+    if (!then_returned) {
+      emit("jump " + end_label);
+    }
+
+    bool else_returned = false;
+    if (has_else) {
+      emitLabel(else_label);
+      if (else_opt.children.size() != 2 || else_opt.children[0]->symbol != "ELSE" ||
+          else_opt.children[1]->symbol != "Stmt") {
+        throw IrError("invalid else statement node");
+      }
+      else_returned = emitStmt(*else_opt.children[1]);
+      if (!else_returned) {
+        emit("jump " + end_label);
+      }
+    }
+
+    if (!then_returned || !has_else || !else_returned) {
+      emitLabel(end_label);
+    }
+    return has_else && then_returned && else_returned;
   }
 
   void collectDeclaration(const compiler::parser::ParseNode &node,
@@ -565,7 +614,13 @@ private:
     instructions_.push_back(std::move(instruction));
   }
 
+  void emitLabel(const std::string &label) { emit(label + ":"); }
+
   std::string newTemp() { return "%" + std::to_string(temp_id_++); }
+
+  std::string newLabel(const std::string &prefix) {
+    return "%" + prefix + "_" + std::to_string(label_id_++);
+  }
 
   std::string newGlobalValue(const std::string &name) {
     std::string base = "@" + name;
@@ -612,6 +667,7 @@ private:
   std::vector<std::map<std::string, Symbol>> scopes_;
   std::set<std::string> used_values_;
   int temp_id_ = 0;
+  int label_id_ = 0;
   bool returned_ = false;
 };
 

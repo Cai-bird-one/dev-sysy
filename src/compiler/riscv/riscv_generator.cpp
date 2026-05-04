@@ -131,7 +131,7 @@ Program parseProgram(const std::string &koopa_ir) {
       continue;
     }
 
-    if (!in_function || line.back() == ':') {
+    if (!in_function) {
       continue;
     }
 
@@ -212,6 +212,33 @@ private:
   void emitInstruction(const std::string &line, std::ostream &output) {
     std::vector<std::string> parts = splitWhitespace(line);
     if (parts.empty()) {
+      return;
+    }
+
+    if (line.back() == ':') {
+      std::string label = line.substr(0, line.size() - 1);
+      if (label == "%entry") {
+        return;
+      }
+      output << stripSigil(label) << ":\n";
+      return;
+    }
+
+    if (parts[0] == "br") {
+      if (parts.size() != 4) {
+        throw RiscvError("invalid branch instruction: " + line);
+      }
+      loadOperand(parts[1], "t0", output);
+      output << "  bnez t0, " << stripSigil(parts[2]) << "\n"
+             << "  j " << stripSigil(parts[3]) << "\n";
+      return;
+    }
+
+    if (parts[0] == "jump") {
+      if (parts.size() != 2) {
+        throw RiscvError("invalid jump instruction: " + line);
+      }
+      output << "  j " << stripSigil(parts[1]) << "\n";
       return;
     }
 
