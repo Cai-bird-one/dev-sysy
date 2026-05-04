@@ -205,8 +205,8 @@ TEST_CASE(koopa_generator_resolves_nested_block_scopes) {
   EXPECT_EQ(generator.generate(*ast),
             "fun @main(): i32 {\n%entry:\n"
             "  %a = alloc i32\n"
-            "  store 1, %a\n"
             "  %a_1 = alloc i32\n"
+            "  store 1, %a\n"
             "  store 2, %a_1\n"
             "  %0 = load %a\n"
             "  ret %0\n"
@@ -241,8 +241,8 @@ TEST_CASE(koopa_generator_uses_outer_scope_in_shadowing_initializer) {
   EXPECT_EQ(generator.generate(*ast),
             "fun @main(): i32 {\n%entry:\n"
             "  %a = alloc i32\n"
-            "  store 1, %a\n"
             "  %a_1 = alloc i32\n"
+            "  store 1, %a\n"
             "  %0 = load %a\n"
             "  %1 = add %0, 1\n"
             "  store %1, %a_1\n"
@@ -262,8 +262,8 @@ TEST_CASE(koopa_generator_booleanizes_runtime_logical_operands) {
   EXPECT_EQ(generator.generate(*ast),
             "fun @main(): i32 {\n%entry:\n"
             "  %a = alloc i32\n"
-            "  store 2, %a\n"
             "  %b = alloc i32\n"
+            "  store 2, %a\n"
             "  store 4, %b\n"
             "  %0 = load %a\n"
             "  %1 = load %b\n"
@@ -279,8 +279,8 @@ TEST_CASE(koopa_generator_booleanizes_runtime_logical_operands) {
   EXPECT_EQ(generator.generate(*ast),
             "fun @main(): i32 {\n%entry:\n"
             "  %a = alloc i32\n"
-            "  store 2, %a\n"
             "  %b = alloc i32\n"
+            "  store 2, %a\n"
             "  store 4, %b\n"
             "  %0 = load %a\n"
             "  %1 = load %b\n"
@@ -401,7 +401,7 @@ TEST_CASE(koopa_generator_hoists_loop_body_allocs_to_entry) {
   std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
   std::string koopa = generator.generate(*ast);
 
-  EXPECT_TRUE(koopa.find("%x = alloc i32\n  %i = alloc i32") !=
+  EXPECT_TRUE(koopa.find("%i = alloc i32\n  %x = alloc i32") !=
               std::string::npos);
   EXPECT_TRUE(koopa.find("%while_body_1:\n  %3 = load %i\n  store %3, %x") !=
               std::string::npos);

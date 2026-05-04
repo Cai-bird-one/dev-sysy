@@ -664,15 +664,10 @@ private:
   }
 
   void emitLocalAlloc(std::string instruction) {
-    if (in_entry_block_) {
-      emit(std::move(instruction));
-    } else {
-      entry_allocs_.push_back(std::move(instruction));
-    }
+    entry_allocs_.push_back(std::move(instruction));
   }
 
   void emitLabel(const std::string &label) {
-    in_entry_block_ = false;
     emit(label + ":");
   }
 
@@ -734,7 +729,6 @@ private:
   std::vector<LoopLabels> loop_stack_;
   int temp_id_ = 0;
   int label_id_ = 0;
-  bool in_entry_block_ = true;
   bool returned_ = false;
 };
 
