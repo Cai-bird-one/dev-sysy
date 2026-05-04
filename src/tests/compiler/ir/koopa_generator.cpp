@@ -494,6 +494,22 @@ TEST_CASE(koopa_generator_decays_array_arguments) {
   EXPECT_TRUE(koopa.find("getelemptr %y, 0") != std::string::npos);
 }
 
+TEST_CASE(koopa_generator_uses_global_consts_in_array_parameter_types) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "const int N=3; int sum(int a[][N]){return a[1][2];}"
+      "int main(){int x[2][N];return sum(x);}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("fun @sum(@sum_a: *[i32, 3]): i32") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("call @sum(") != std::string::npos);
+}
+
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
   lexer::Lexer lexer = lexer::buildDefaultLexer();
   parser::Parser parser = parser::buildDefaultParser();

@@ -1383,8 +1383,8 @@ std::string findFunctionReturnType(const compiler::parser::ParseNode &function) 
 class ProgramBuilder {
 public:
   std::string generate(const compiler::parser::ParseNode &ast) {
-    collectFunctionSignatures(ast);
     collectGlobalDeclarations(ast);
+    collectFunctionSignatures(ast);
 
     std::vector<const compiler::parser::ParseNode *> functions;
     collectNodes(ast, "FuncDef", functions);
@@ -1461,6 +1461,9 @@ private:
       std::string name = findFunctionName(*function);
       if (function_signatures_.find(name) != function_signatures_.end()) {
         throw IrError("duplicate function: " + name);
+      }
+      if (global_symbols_.find(name) != global_symbols_.end()) {
+        throw IrError("duplicate global identifier and function: " + name);
       }
       function_signatures_[name] =
           FunctionSignature{findFunctionReturnType(*function),
