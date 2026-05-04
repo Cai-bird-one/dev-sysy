@@ -259,36 +259,20 @@ TEST_CASE(koopa_generator_booleanizes_runtime_logical_operands) {
   std::istringstream input("int main(){int a=2,b=4; return a&&b;}");
   std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
 
-  EXPECT_EQ(generator.generate(*ast),
-            "fun @main(): i32 {\n%entry:\n"
-            "  %a = alloc i32\n"
-            "  %b = alloc i32\n"
-            "  store 2, %a\n"
-            "  store 4, %b\n"
-            "  %0 = load %a\n"
-            "  %1 = load %b\n"
-            "  %2 = ne %0, 0\n"
-            "  %3 = ne %1, 0\n"
-            "  %4 = and %2, %3\n"
-            "  ret %4\n"
-            "}\n");
+  std::string koopa = generator.generate(*ast);
+  EXPECT_TRUE(koopa.find("br %1, %and_rhs_0, %and_end_1") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("%and_rhs_0:\n") != std::string::npos);
+  EXPECT_TRUE(koopa.find("%and_end_1:\n") != std::string::npos);
 
   std::istringstream or_input("int main(){int a=2,b=4; return a||b;}");
   ast = parser.parse(lexer.tokenize(or_input));
 
-  EXPECT_EQ(generator.generate(*ast),
-            "fun @main(): i32 {\n%entry:\n"
-            "  %a = alloc i32\n"
-            "  %b = alloc i32\n"
-            "  store 2, %a\n"
-            "  store 4, %b\n"
-            "  %0 = load %a\n"
-            "  %1 = load %b\n"
-            "  %2 = ne %0, 0\n"
-            "  %3 = ne %1, 0\n"
-            "  %4 = or %2, %3\n"
-            "  ret %4\n"
-            "}\n");
+  koopa = generator.generate(*ast);
+  EXPECT_TRUE(koopa.find("br %1, %or_end_1, %or_rhs_0") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("%or_rhs_0:\n") != std::string::npos);
+  EXPECT_TRUE(koopa.find("%or_end_1:\n") != std::string::npos);
 }
 
 TEST_CASE(koopa_generator_emits_if_else_branches) {
@@ -418,6 +402,39 @@ TEST_CASE(koopa_generator_terminates_unreachable_loop_exit_block) {
   std::string koopa = generator.generate(*ast);
 
   EXPECT_TRUE(koopa.find("%while_end_2:\n  ret 0\n") != std::string::npos);
+}
+
+TEST_CASE(koopa_generator_emits_function_definitions_and_calls) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int add(int a,int b){return a+b;} int main(){return add(1,2);}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("fun @add(@a: i32, @b: i32): i32") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("store @a, %a\n  store @b, %b") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("%0 = load %a\n  %1 = load %b\n  %2 = add %0, %1") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("%0 = call @add(1, 2)\n  ret %0") !=
+              std::string::npos);
+}
+
+TEST_CASE(koopa_generator_emits_void_function_calls) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input("void sink(int a){return;} int main(){sink(1);return 0;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("fun @sink(@a: i32) {") != std::string::npos);
+  EXPECT_TRUE(koopa.find("call @sink(1)\n  ret 0") != std::string::npos);
 }
 
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {

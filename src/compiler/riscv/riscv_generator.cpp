@@ -19,12 +19,13 @@ struct GlobalVariable {
 
 struct Function {
   std::string name;
+  std::vector<std::string> params;
   std::vector<std::string> instructions;
 };
 
 struct Program {
   std::vector<GlobalVariable> globals;
-  Function function;
+  std::vector<Function> functions;
 };
 
 std::string trim(const std::string &text) {
@@ -84,11 +85,89 @@ std::vector<std::string> splitWhitespace(const std::string &line) {
   return parts;
 }
 
+std::vector<std::string> splitCommaList(const std::string &text) {
+  std::vector<std::string> result;
+  size_t begin = 0;
+  while (begin < text.size()) {
+    size_t comma = text.find(',', begin);
+    std::string item =
+        trim(text.substr(begin, comma == std::string::npos ? std::string::npos
+                                                           : comma - begin));
+    if (!item.empty()) {
+      result.push_back(item);
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    begin = comma + 1;
+  }
+  return result;
+}
+
+std::vector<std::string> parseFunctionParams(const std::string &line) {
+  size_t left = line.find('(');
+  size_t right = line.find(')', left);
+  if (left == std::string::npos || right == std::string::npos || right < left) {
+    throw RiscvError("invalid function header: " + line);
+  }
+  std::string params_text = trim(line.substr(left + 1, right - left - 1));
+  if (params_text.empty()) {
+    return {};
+  }
+
+  std::vector<std::string> params;
+  for (const std::string &param : splitCommaList(params_text)) {
+    size_t colon = param.find(':');
+    if (colon == std::string::npos) {
+      throw RiscvError("invalid function parameter: " + param);
+    }
+    std::string name = trim(param.substr(0, colon));
+    std::string type = trim(param.substr(colon + 1));
+    if (type != "i32") {
+      throw RiscvError("unsupported function parameter type: " + param);
+    }
+    params.push_back(name);
+  }
+  return params;
+}
+
+struct CallInstruction {
+  bool has_result = false;
+  std::string result;
+  std::string callee;
+  std::vector<std::string> args;
+};
+
+CallInstruction parseCallInstruction(const std::string &line) {
+  CallInstruction call;
+  size_t call_pos = line.find("call @");
+  if (call_pos == std::string::npos) {
+    throw RiscvError("invalid call instruction: " + line);
+  }
+
+  size_t eq_pos = line.find(" = ");
+  if (eq_pos != std::string::npos && eq_pos < call_pos) {
+    call.has_result = true;
+    call.result = trim(line.substr(0, eq_pos));
+  }
+
+  size_t name_begin = call_pos + 5;
+  size_t left = line.find('(', name_begin);
+  size_t right = line.rfind(')');
+  if (left == std::string::npos || right == std::string::npos || right < left) {
+    throw RiscvError("invalid call instruction: " + line);
+  }
+  call.callee = line.substr(name_begin, left - name_begin);
+  call.args = splitCommaList(trim(line.substr(left + 1, right - left - 1)));
+  return call;
+}
+
 Program parseProgram(const std::string &koopa_ir) {
   Program program;
   std::istringstream input(koopa_ir);
   std::string line;
   bool in_function = false;
+  Function current_function;
 
   while (std::getline(input, line)) {
     line = trim(line);
@@ -118,15 +197,15 @@ Program parseProgram(const std::string &koopa_ir) {
           name_end <= name_begin) {
         throw RiscvError("invalid function header: " + line);
       }
-      if (!program.function.name.empty()) {
-        throw RiscvError("multiple functions are not supported yet");
-      }
-      program.function.name = line.substr(name_begin, name_end - name_begin);
+      current_function = Function{};
+      current_function.name = line.substr(name_begin, name_end - name_begin);
+      current_function.params = parseFunctionParams(line);
       in_function = true;
       continue;
     }
 
     if (line == "}" && in_function) {
+      program.functions.push_back(std::move(current_function));
       in_function = false;
       continue;
     }
@@ -135,10 +214,10 @@ Program parseProgram(const std::string &koopa_ir) {
       continue;
     }
 
-    program.function.instructions.push_back(line);
+    current_function.instructions.push_back(line);
   }
 
-  if (program.function.name.empty()) {
+  if (program.functions.empty()) {
     throw RiscvError("unsupported Koopa IR: expected function definition");
   }
   return program;
@@ -185,6 +264,17 @@ public:
            << "  .globl " << function_.name << "\n"
            << function_.name << ":\n";
     adjustStack(output, -frame_size_);
+    if (has_call_) {
+      storeToStack("ra", ra_offset_, output);
+    }
+    for (size_t i = 0; i < function_.params.size(); ++i) {
+      if (i < 8) {
+        storeValue("a" + std::to_string(i), function_.params[i], output);
+      } else {
+        loadFromStack(frame_size_ + static_cast<int>((i - 8) * 4), "t0", output);
+        storeValue("t0", function_.params[i], output);
+      }
+    }
 
     for (const std::string &line : function_.instructions) {
       emitInstruction(line, output);
@@ -194,16 +284,32 @@ public:
 private:
   void assignStackSlots() {
     std::set<std::string> stack_values;
+    for (const std::string &param : function_.params) {
+      stack_values.insert(param);
+    }
     for (const std::string &line : function_.instructions) {
       std::vector<std::string> parts = splitWhitespace(line);
       if (parts.size() >= 3 && parts[1] == "=") {
         stack_values.insert(parts[0]);
       }
+      if (line.find("call @") != std::string::npos) {
+        has_call_ = true;
+        CallInstruction call = parseCallInstruction(line);
+        if (call.args.size() > max_call_args_) {
+          max_call_args_ = call.args.size();
+        }
+      }
     }
 
-    int next_offset = 0;
+    outgoing_arg_size_ =
+        max_call_args_ > 8 ? static_cast<int>((max_call_args_ - 8) * 4) : 0;
+    int next_offset = outgoing_arg_size_;
     for (const std::string &value : stack_values) {
       stack_offsets_[value] = next_offset;
+      next_offset += 4;
+    }
+    if (has_call_) {
+      ra_offset_ = next_offset;
       next_offset += 4;
     }
     frame_size_ = ((next_offset + 15) / 16) * 16;
@@ -252,12 +358,23 @@ private:
     }
 
     if (parts[0] == "ret") {
-      if (parts.size() != 2) {
+      if (parts.size() > 2) {
         throw RiscvError("invalid return instruction: " + line);
       }
-      loadOperand(parts[1], "a0", output);
+      if (parts.size() == 2) {
+        loadOperand(parts[1], "a0", output);
+      }
+      if (has_call_) {
+        loadFromStack(ra_offset_, "ra", output);
+      }
       adjustStack(output, frame_size_);
       output << "  ret\n";
+      return;
+    }
+
+    if (startsWith(line, "call @") ||
+        (parts.size() >= 3 && parts[1] == "=" && parts[2] == "call")) {
+      emitCall(parseCallInstruction(line), output);
       return;
     }
 
@@ -298,6 +415,21 @@ private:
     output << "  " << koopaBinaryToRiscv(op) << " t0, t0, t1\n";
   }
 
+  void emitCall(const CallInstruction &call, std::ostream &output) {
+    for (size_t i = 0; i < call.args.size(); ++i) {
+      if (i < 8) {
+        loadOperand(call.args[i], "a" + std::to_string(i), output);
+      } else {
+        loadOperand(call.args[i], "t0", output);
+        storeToStack("t0", static_cast<int>((i - 8) * 4), output);
+      }
+    }
+    output << "  call " << stripSigil(call.callee) << "\n";
+    if (call.has_result) {
+      storeValue("a0", call.result, output);
+    }
+  }
+
   void emitComparison(const std::string &op, std::ostream &output) {
     if (op == "lt") {
       output << "  slt t0, t0, t1\n";
@@ -335,16 +467,17 @@ private:
       output << "  li " << reg << ", " << operand << "\n";
       return;
     }
+    auto stack_found = stack_offsets_.find(operand);
+    if (stack_found != stack_offsets_.end()) {
+      loadFromStack(stack_found->second, reg, output);
+      return;
+    }
     if (startsWith(operand, "@")) {
       output << "  la " << reg << ", " << stripSigil(operand) << "\n"
              << "  lw " << reg << ", 0(" << reg << ")\n";
       return;
     }
-    auto found = stack_offsets_.find(operand);
-    if (found == stack_offsets_.end()) {
-      throw RiscvError("unknown Koopa value: " + operand);
-    }
-    loadFromStack(found->second, reg, output);
+    throw RiscvError("unknown Koopa value: " + operand);
   }
 
   void loadFromPointer(const std::string &pointer, const std::string &reg,
@@ -415,6 +548,10 @@ private:
   Function function_;
   std::map<std::string, int> stack_offsets_;
   int frame_size_ = 0;
+  int ra_offset_ = 0;
+  int outgoing_arg_size_ = 0;
+  size_t max_call_args_ = 0;
+  bool has_call_ = false;
 };
 
 } // namespace
@@ -438,8 +575,10 @@ void RiscvGenerator::generate(const std::string &koopa_ir,
     }
   }
 
-  FunctionEmitter emitter(std::move(program.function));
-  emitter.emit(output);
+  for (Function &function : program.functions) {
+    FunctionEmitter emitter(std::move(function));
+    emitter.emit(output);
+  }
 }
 
 } // namespace compiler::riscv

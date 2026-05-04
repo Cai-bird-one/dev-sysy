@@ -133,3 +133,32 @@ TEST_CASE(riscv_generator_handles_large_stack_offsets) {
   EXPECT_TRUE(riscv.find("sw t0, 0(t2)") != std::string::npos);
   EXPECT_TRUE(riscv.find("lw a0, 0(t2)") != std::string::npos);
 }
+
+TEST_CASE(riscv_generator_handles_functions_and_calls) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(
+      "fun @add(@a: i32, @b: i32): i32 {\n"
+      "%entry:\n"
+      "  %a = alloc i32\n"
+      "  %b = alloc i32\n"
+      "  store @a, %a\n"
+      "  store @b, %b\n"
+      "  %0 = load %a\n"
+      "  %1 = load %b\n"
+      "  %2 = add %0, %1\n"
+      "  ret %2\n"
+      "}\n"
+      "\n"
+      "fun @main(): i32 {\n"
+      "%entry:\n"
+      "  %0 = call @add(1, 2)\n"
+      "  ret %0\n"
+      "}\n");
+
+  EXPECT_TRUE(riscv.find("add:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw a0") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw a1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("main:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("call add") != std::string::npos);
+  EXPECT_TRUE(riscv.find("lw ra") != std::string::npos);
+}
