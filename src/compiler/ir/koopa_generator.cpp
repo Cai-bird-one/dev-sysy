@@ -183,9 +183,11 @@ public:
   FunctionBuilder(const compiler::parser::ParseNode &function,
                   std::map<std::string, Symbol> global_symbols,
                   std::map<std::string, FunctionSignature> function_signatures,
+                  std::set<std::string> reserved_values,
                   std::set<std::string> &used_external_functions)
       : function_(function), function_signatures_(std::move(function_signatures)),
-        used_external_functions_(used_external_functions) {
+        used_external_functions_(used_external_functions),
+        used_values_(std::move(reserved_values)) {
     function_name_ = findFunctionName(function_);
     return_type_ = findFunctionReturnType(function_);
     scopes_.push_back(std::move(global_symbols));
@@ -888,7 +890,7 @@ private:
   }
 
   std::string newParameterValue(const std::string &name) {
-    std::string base = "@" + name;
+    std::string base = "@" + function_name_ + "_" + name;
     std::string candidate = base;
     int suffix = 0;
     while (used_values_.find(candidate) != used_values_.end()) {
@@ -972,7 +974,7 @@ public:
     std::vector<std::string> function_outputs;
     for (const compiler::parser::ParseNode *function : functions) {
       FunctionBuilder builder(*function, global_symbols_, function_signatures_,
-                              used_external_functions_);
+                              used_values_, used_external_functions_);
       function_outputs.push_back(builder.generate());
     }
 
@@ -1015,6 +1017,12 @@ private:
     function_signatures_["putch"] = FunctionSignature{"void", 1, true};
     function_signatures_["starttime"] = FunctionSignature{"void", 0, true};
     function_signatures_["stoptime"] = FunctionSignature{"void", 0, true};
+    used_values_.insert("@getint");
+    used_values_.insert("@getch");
+    used_values_.insert("@putint");
+    used_values_.insert("@putch");
+    used_values_.insert("@starttime");
+    used_values_.insert("@stoptime");
 
     std::vector<const compiler::parser::ParseNode *> functions;
     collectNodes(ast, "FuncDef", functions);
@@ -1026,6 +1034,7 @@ private:
       function_signatures_[name] =
           FunctionSignature{findFunctionReturnType(*function),
                             countFunctionParameters(*function), false};
+      used_values_.insert("@" + name);
     }
   }
 

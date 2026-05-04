@@ -414,9 +414,9 @@ TEST_CASE(koopa_generator_emits_function_definitions_and_calls) {
   std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
   std::string koopa = generator.generate(*ast);
 
-  EXPECT_TRUE(koopa.find("fun @add(@a: i32, @b: i32): i32") !=
+  EXPECT_TRUE(koopa.find("fun @add(@add_a: i32, @add_b: i32): i32") !=
               std::string::npos);
-  EXPECT_TRUE(koopa.find("store @a, %a\n  store @b, %b") !=
+  EXPECT_TRUE(koopa.find("store @add_a, %a\n  store @add_b, %b") !=
               std::string::npos);
   EXPECT_TRUE(koopa.find("%0 = load %a\n  %1 = load %b\n  %2 = add %0, %1") !=
               std::string::npos);
@@ -433,8 +433,27 @@ TEST_CASE(koopa_generator_emits_void_function_calls) {
   std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
   std::string koopa = generator.generate(*ast);
 
-  EXPECT_TRUE(koopa.find("fun @sink(@a: i32) {") != std::string::npos);
+  EXPECT_TRUE(koopa.find("fun @sink(@sink_a: i32) {") != std::string::npos);
   EXPECT_TRUE(koopa.find("call @sink(1)\n  ret 0") != std::string::npos);
+}
+
+TEST_CASE(koopa_generator_avoids_global_and_parameter_name_collisions) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int n; int gcd(int m,int n){return n;} int main(){return gcd(1,2);}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("global @n = alloc i32, zeroinit") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("fun @gcd(@gcd_m: i32, @gcd_n: i32): i32") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("store @gcd_m, %m\n  store @gcd_n, %n") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("store @n, %n") == std::string::npos);
 }
 
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
