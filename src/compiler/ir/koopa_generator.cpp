@@ -307,6 +307,26 @@ private:
       return emitIfStmt(node);
     }
 
+    if (node.children[0]->symbol == "WHILE") {
+      return emitWhileStmt(node);
+    }
+
+    if (node.children[0]->symbol == "BREAK") {
+      if (loop_stack_.empty()) {
+        throw IrError("break statement outside loop");
+      }
+      emit("jump " + loop_stack_.back().break_label);
+      return true;
+    }
+
+    if (node.children[0]->symbol == "CONTINUE") {
+      if (loop_stack_.empty()) {
+        throw IrError("continue statement outside loop");
+      }
+      emit("jump " + loop_stack_.back().continue_label);
+      return true;
+    }
+
     if (node.children[0]->symbol == "Block") {
       return emitBlock(*node.children[0], true);
     }
@@ -363,6 +383,32 @@ private:
       emitLabel(end_label);
     }
     return has_else && then_returned && else_returned;
+  }
+
+  bool emitWhileStmt(const compiler::parser::ParseNode &node) {
+    if (node.children.size() != 5) {
+      throw IrError("invalid while statement node");
+    }
+
+    std::string entry_label = newLabel("while_entry");
+    std::string body_label = newLabel("while_body");
+    std::string end_label = newLabel("while_end");
+
+    emit("jump " + entry_label);
+    emitLabel(entry_label);
+    Value condition = emitBoolean(emitExpression(*node.children[2]));
+    emit("br " + condition.operand + ", " + body_label + ", " + end_label);
+
+    emitLabel(body_label);
+    loop_stack_.push_back(LoopLabels{end_label, entry_label});
+    bool body_terminated = emitStmt(*node.children[4]);
+    loop_stack_.pop_back();
+    if (!body_terminated) {
+      emit("jump " + entry_label);
+    }
+
+    emitLabel(end_label);
+    return false;
   }
 
   void collectDeclaration(const compiler::parser::ParseNode &node,
@@ -666,6 +712,11 @@ private:
   std::vector<std::string> instructions_;
   std::vector<std::map<std::string, Symbol>> scopes_;
   std::set<std::string> used_values_;
+  struct LoopLabels {
+    std::string break_label;
+    std::string continue_label;
+  };
+  std::vector<LoopLabels> loop_stack_;
   int temp_id_ = 0;
   int label_id_ = 0;
   bool returned_ = false;

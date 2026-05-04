@@ -346,6 +346,51 @@ TEST_CASE(koopa_generator_matches_else_to_nearest_if) {
             "}\n");
 }
 
+TEST_CASE(koopa_generator_emits_while_loop) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int main(){int a=0;while(a<3)a=a+1;return a;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "fun @main(): i32 {\n%entry:\n"
+            "  %a = alloc i32\n"
+            "  store 0, %a\n"
+            "  jump %while_entry_0\n"
+            "%while_entry_0:\n"
+            "  %0 = load %a\n"
+            "  %1 = lt %0, 3\n"
+            "  %2 = ne %1, 0\n"
+            "  br %2, %while_body_1, %while_end_2\n"
+            "%while_body_1:\n"
+            "  %3 = load %a\n"
+            "  %4 = add %3, 1\n"
+            "  store %4, %a\n"
+            "  jump %while_entry_0\n"
+            "%while_end_2:\n"
+            "  %5 = load %a\n"
+            "  ret %5\n"
+            "}\n");
+}
+
+TEST_CASE(koopa_generator_emits_break_and_continue) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int main(){int a=0;while(a<5){a=a+1;if(a==2)continue;if(a==4)break;}return a;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("jump %while_entry_0") != std::string::npos);
+  EXPECT_TRUE(koopa.find("jump %while_end_2") != std::string::npos);
+  EXPECT_TRUE(koopa.find("%while_end_2:\n") != std::string::npos);
+}
+
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
   lexer::Lexer lexer = lexer::buildDefaultLexer();
   parser::Parser parser = parser::buildDefaultParser();
