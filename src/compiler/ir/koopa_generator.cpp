@@ -1,7 +1,9 @@
 #include "compiler/ir/koopa_generator.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <map>
+#include <numeric>
 #include <ostream>
 #include <set>
 #include <sstream>
@@ -26,12 +28,16 @@ struct Symbol {
   SymbolKind kind = SymbolKind::Constant;
   long long const_value = 0;
   std::string pointer;
+  std::vector<long long> dimensions;
+  bool assignable = false;
+  bool pointer_parameter = false;
 };
 
 struct FunctionSignature {
   std::string return_type = "i32";
   size_t parameter_count = 0;
   bool external = false;
+  std::vector<std::string> parameter_types;
 };
 
 const compiler::parser::ParseNode *
@@ -80,6 +86,34 @@ std::string toOperand(long long value) { return std::to_string(value); }
 
 bool startsWith(const std::string &text, const std::string &prefix) {
   return text.rfind(prefix, 0) == 0;
+}
+
+size_t findTopLevelComma(const std::string &text, size_t begin = 0) {
+  int depth = 0;
+  for (size_t i = begin; i < text.size(); ++i) {
+    if (text[i] == '[') {
+      ++depth;
+    } else if (text[i] == ']') {
+      --depth;
+    } else if (text[i] == ',' && depth == 0) {
+      return i;
+    }
+  }
+  return std::string::npos;
+}
+
+std::string trim(const std::string &text) {
+  size_t begin = 0;
+  while (begin < text.size() &&
+         std::isspace(static_cast<unsigned char>(text[begin]))) {
+    ++begin;
+  }
+  size_t end = text.size();
+  while (end > begin &&
+         std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+    --end;
+  }
+  return text.substr(begin, end - begin);
 }
 
 std::string koopaOp(const std::string &token) {
@@ -175,6 +209,52 @@ long long expectConstant(const Value &value, const std::string &context) {
   return value.const_value;
 }
 
+long long elementCount(const std::vector<long long> &dimensions,
+                       size_t begin = 0) {
+  long long count = 1;
+  for (size_t i = begin; i < dimensions.size(); ++i) {
+    count *= dimensions[i];
+  }
+  return count;
+}
+
+std::string arrayType(const std::vector<long long> &dimensions,
+                      size_t begin = 0) {
+  if (begin == dimensions.size()) {
+    return "i32";
+  }
+  return "[" + arrayType(dimensions, begin + 1) + ", " +
+         std::to_string(dimensions[begin]) + "]";
+}
+
+std::vector<long long> parseArrayTypeDimensions(const std::string &type) {
+  std::string text = trim(type);
+  if (text == "i32") {
+    return {};
+  }
+  if (text.empty() || text.front() != '[' || text.back() != ']') {
+    throw IrError("invalid array type: " + type);
+  }
+  std::string inner = text.substr(1, text.size() - 2);
+  size_t comma = findTopLevelComma(inner);
+  if (comma == std::string::npos) {
+    throw IrError("invalid array type: " + type);
+  }
+  std::vector<long long> dimensions;
+  dimensions.push_back(std::stoll(trim(inner.substr(comma + 1))));
+  std::vector<long long> tail =
+      parseArrayTypeDimensions(inner.substr(0, comma));
+  dimensions.insert(dimensions.end(), tail.begin(), tail.end());
+  return dimensions;
+}
+
+std::vector<long long> parsePointerTypeDimensions(const std::string &type) {
+  if (!startsWith(type, "*")) {
+    throw IrError("expected pointer type: " + type);
+  }
+  return parseArrayTypeDimensions(type.substr(1));
+}
+
 std::string findFunctionName(const compiler::parser::ParseNode &function);
 std::string findFunctionReturnType(const compiler::parser::ParseNode &function);
 
@@ -215,7 +295,7 @@ public:
       if (i != 0) {
         output << ", ";
       }
-      output << parameters_[i].koopa_name << ": i32";
+      output << parameters_[i].koopa_name << ": " << parameters_[i].type;
     }
     output << ")";
     if (return_type_ != "void") {
@@ -226,6 +306,9 @@ public:
       output << "  " << line << '\n';
     }
     for (const Parameter &parameter : parameters_) {
+      if (parameter.pointer.empty()) {
+        continue;
+      }
       output << "  store " << parameter.koopa_name << ", " << parameter.pointer
              << '\n';
     }
@@ -471,13 +554,17 @@ private:
     if (node.children.size() != 4 || node.children[0]->symbol != "IDENT") {
       throw IrError("invalid ConstDef node");
     }
-    if (hasNonEmptyChild(node, "ConstArrayDims")) {
-      throw IrError("array constant is not supported yet: " +
-                    node.children[0]->lexeme);
+    std::vector<long long> dimensions =
+        collectArrayDimensions(*node.children[1]);
+    if (!dimensions.empty()) {
+      collectLocalArrayDef(node.children[0]->lexeme, dimensions,
+                           node.children[3].get(), false);
+      return;
     }
     long long value =
         expectConstant(emitExpression(*node.children[3]), "const initializer");
-    define(node.children[0]->lexeme, Symbol{SymbolKind::Constant, value, ""});
+    define(node.children[0]->lexeme,
+           Symbol{SymbolKind::Constant, value, "", {}, false, false});
   }
 
   void collectVarDef(const compiler::parser::ParseNode &node,
@@ -485,14 +572,19 @@ private:
     if (node.children.size() < 2 || node.children[0]->symbol != "IDENT") {
       throw IrError("invalid VarDef node");
     }
-    if (hasNonEmptyChild(node, "ConstArrayDims")) {
-      throw IrError("array variable is not supported yet: " +
-                    node.children[0]->lexeme);
-    }
-
     const std::string &name = node.children[0]->lexeme;
     if (global_scope) {
       throw IrError("internal error: local function builder saw global variable");
+    }
+    std::vector<long long> dimensions =
+        collectArrayDimensions(*node.children[1]);
+    if (!dimensions.empty()) {
+      const compiler::parser::ParseNode *initializer = nullptr;
+      if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
+        initializer = node.children[2]->children[1].get();
+      }
+      collectLocalArrayDef(name, dimensions, initializer, true);
+      return;
     }
 
     std::string pointer = newNamedValue(name);
@@ -504,8 +596,38 @@ private:
     } else {
       initial_value = makeConstant(0);
     }
-    define(name, Symbol{SymbolKind::Variable, 0, pointer});
+    define(name, Symbol{SymbolKind::Variable, 0, pointer, {}, true, false});
     emit("store " + initial_value.operand + ", " + pointer);
+  }
+
+  void collectLocalArrayDef(const std::string &name,
+                            const std::vector<long long> &dimensions,
+                            const compiler::parser::ParseNode *initializer,
+                            bool assignable) {
+    std::string pointer = newNamedValue(name);
+    emitLocalAlloc(pointer + " = alloc " + arrayType(dimensions));
+    define(name, Symbol{SymbolKind::Variable, 0, pointer, dimensions, assignable,
+                        false});
+
+    long long count = elementCount(dimensions);
+    for (long long i = 0; i < count; ++i) {
+      std::string element_pointer = emitArrayElementPointer(pointer, dimensions, i);
+      emit("store 0, " + element_pointer);
+    }
+    if (initializer == nullptr) {
+      return;
+    }
+
+    std::vector<std::pair<long long, Value>> entries;
+    flattenRuntimeInitializer(*initializer, dimensions, 0, 0, entries);
+    for (const auto &entry : entries) {
+      if (entry.first < 0 || entry.first >= count) {
+        throw IrError("too many array initializer values for: " + name);
+      }
+      std::string element_pointer =
+          emitArrayElementPointer(pointer, dimensions, entry.first);
+      emit("store " + entry.second.operand + ", " + element_pointer);
+    }
   }
 
   Value emitExpression(const compiler::parser::ParseNode &node) {
@@ -610,10 +732,22 @@ private:
       used_external_functions_.insert(name);
     }
 
-    std::vector<Value> args;
-    collectCallArguments(*node.children[2], args);
-    if (args.size() != signature->second.parameter_count) {
+    std::vector<const compiler::parser::ParseNode *> arg_nodes;
+    collectCallArgumentNodes(*node.children[2], arg_nodes);
+    if (arg_nodes.size() != signature->second.parameter_count) {
       throw IrError("argument count mismatch for function: " + name);
+    }
+    std::vector<Value> args;
+    for (size_t i = 0; i < arg_nodes.size(); ++i) {
+      std::string parameter_type =
+          i < signature->second.parameter_types.size()
+              ? signature->second.parameter_types[i]
+              : std::string("i32");
+      if (startsWith(parameter_type, "*")) {
+        args.push_back(emitPointerArgument(*arg_nodes[i], parameter_type));
+      } else {
+        args.push_back(emitExpression(*arg_nodes[i]));
+      }
     }
 
     std::ostringstream call;
@@ -636,18 +770,19 @@ private:
     return Value{false, 0, result};
   }
 
-  void collectCallArguments(const compiler::parser::ParseNode &node,
-                            std::vector<Value> &args) {
+  void collectCallArgumentNodes(
+      const compiler::parser::ParseNode &node,
+      std::vector<const compiler::parser::ParseNode *> &args) {
     if (node.children.empty()) {
       return;
     }
     if (node.symbol == "FuncRParamsOpt") {
-      collectCallArguments(*node.children[0], args);
+      collectCallArgumentNodes(*node.children[0], args);
       return;
     }
     if (node.symbol == "FuncRParams") {
-      args.push_back(emitExpression(*node.children[0]));
-      collectCallArguments(*node.children[1], args);
+      args.push_back(node.children[0].get());
+      collectCallArgumentNodes(*node.children[1], args);
       return;
     }
     if (node.symbol == "FuncRParamsTail") {
@@ -657,11 +792,64 @@ private:
       if (node.children.size() != 3) {
         throw IrError("invalid FuncRParamsTail node");
       }
-      args.push_back(emitExpression(*node.children[1]));
-      collectCallArguments(*node.children[2], args);
+      args.push_back(node.children[1].get());
+      collectCallArgumentNodes(*node.children[2], args);
       return;
     }
     throw IrError("invalid function argument node: " + node.symbol);
+  }
+
+  const compiler::parser::ParseNode *
+  unwrapArrayArgument(const compiler::parser::ParseNode &node) {
+    if (node.symbol == "LVal") {
+      return &node;
+    }
+    if ((node.symbol == "Exp" || node.symbol == "ConstExp" ||
+         node.symbol == "ConstInitVal" || node.symbol == "InitVal" ||
+         node.symbol == "ReturnExpOpt" || node.symbol == "Number") &&
+        node.children.size() == 1) {
+      return unwrapArrayArgument(*node.children[0]);
+    }
+    if (node.symbol == "PrimaryExp") {
+      if (node.children.size() == 1) {
+        return unwrapArrayArgument(*node.children[0]);
+      }
+      if (node.children.size() == 3 && node.children[0]->symbol == "LPAREN") {
+        return unwrapArrayArgument(*node.children[1]);
+      }
+    }
+    if (node.symbol == "UnaryExp" && node.children.size() == 1) {
+      return unwrapArrayArgument(*node.children[0]);
+    }
+    if ((node.symbol == "MulExp" || node.symbol == "AddExp" ||
+         node.symbol == "RelExp" || node.symbol == "EqExp" ||
+         node.symbol == "LAndExp" || node.symbol == "LOrExp") &&
+        node.children.size() == 2 && node.children[1]->children.empty()) {
+      return unwrapArrayArgument(*node.children[0]);
+    }
+    return nullptr;
+  }
+
+  Value emitPointerArgument(const compiler::parser::ParseNode &node,
+                            const std::string &parameter_type) {
+    const compiler::parser::ParseNode *lval = unwrapArrayArgument(node);
+    if (lval == nullptr || lval->children.empty() ||
+        lval->children[0]->symbol != "IDENT") {
+      throw IrError("array argument must be an lvalue");
+    }
+    const Symbol &symbol = lookup(lval->children[0]->lexeme);
+    if (symbol.kind != SymbolKind::Variable ||
+        (symbol.dimensions.empty() && !symbol.pointer_parameter)) {
+      throw IrError("array argument must be an array: " +
+                    lval->children[0]->lexeme);
+    }
+
+    std::vector<Value> indices = collectLValIndices(*lval);
+    std::vector<long long> expected_dimensions =
+        parsePointerTypeDimensions(parameter_type);
+    std::string pointer = emitDecayedArrayPointer(symbol, indices,
+                                                  expected_dimensions);
+    return Value{false, 0, pointer};
   }
 
   Value emitBinaryTail(const compiler::parser::ParseNode &node,
@@ -773,14 +961,22 @@ private:
     if (node.children.empty() || node.children[0]->symbol != "IDENT") {
       throw IrError("invalid LVal node");
     }
-    if (node.children.size() > 1 && !node.children[1]->children.empty()) {
-      throw IrError("array LVal is not supported yet: " +
-                    node.children[0]->lexeme);
-    }
 
     const Symbol &symbol = lookup(node.children[0]->lexeme);
     if (symbol.kind == SymbolKind::Constant) {
       return makeConstant(symbol.const_value);
+    }
+    if (!symbol.dimensions.empty() || symbol.pointer_parameter) {
+      std::vector<Value> indices = collectLValIndices(node);
+      std::string pointer = emitArrayAccessPointer(symbol, indices);
+      size_t required_indices = symbol.dimensions.size() +
+                                (symbol.pointer_parameter ? 1 : 0);
+      if (indices.size() < required_indices) {
+        return Value{false, 0, pointer};
+      }
+      std::string loaded = newTemp();
+      emit(loaded + " = load " + pointer);
+      return Value{false, 0, loaded};
     }
 
     std::string loaded = newTemp();
@@ -792,16 +988,208 @@ private:
     if (lval.children.empty() || lval.children[0]->symbol != "IDENT") {
       throw IrError("invalid assignment LVal");
     }
-    if (lval.children.size() > 1 && !lval.children[1]->children.empty()) {
-      throw IrError("array assignment is not supported yet: " +
-                    lval.children[0]->lexeme);
-    }
 
     const Symbol &symbol = lookup(lval.children[0]->lexeme);
-    if (symbol.kind != SymbolKind::Variable) {
+    if (symbol.kind != SymbolKind::Variable || !symbol.assignable) {
       throw IrError("cannot assign to constant: " + lval.children[0]->lexeme);
     }
+    if (!symbol.dimensions.empty() || symbol.pointer_parameter) {
+      std::vector<Value> indices = collectLValIndices(lval);
+      size_t required_indices = symbol.dimensions.size() +
+                                (symbol.pointer_parameter ? 1 : 0);
+      if (indices.size() != required_indices) {
+        throw IrError("array assignment must index every dimension: " +
+                      lval.children[0]->lexeme);
+      }
+      return emitArrayAccessPointer(symbol, indices);
+    }
     return symbol.pointer;
+  }
+
+  std::string emitArrayAccessPointer(const Symbol &symbol,
+                                     const std::vector<Value> &indices) {
+    if (indices.empty()) {
+      if (symbol.pointer_parameter) {
+        return symbol.pointer;
+      }
+      return emitArrayElementPointer(symbol.pointer, symbol.dimensions,
+                                     std::vector<Value>{makeConstant(0)}, false);
+    }
+    return emitArrayElementPointer(symbol.pointer, symbol.dimensions, indices,
+                                   symbol.pointer_parameter);
+  }
+
+  std::string emitDecayedArrayPointer(
+      const Symbol &symbol, const std::vector<Value> &indices,
+      const std::vector<long long> &expected_dimensions) {
+    size_t consumed_dimensions = 0;
+    std::string pointer;
+    if (symbol.pointer_parameter) {
+      if (indices.empty()) {
+        pointer = symbol.pointer;
+      } else {
+        pointer = emitArrayElementPointer(symbol.pointer, symbol.dimensions,
+                                          indices, true);
+        consumed_dimensions = indices.size() - 1;
+      }
+    } else {
+      std::vector<Value> actual_indices = indices;
+      if (actual_indices.empty()) {
+        actual_indices.push_back(makeConstant(0));
+      }
+      pointer = emitArrayElementPointer(symbol.pointer, symbol.dimensions,
+                                        actual_indices, false);
+      consumed_dimensions = actual_indices.size();
+    }
+
+    if (consumed_dimensions > symbol.dimensions.size()) {
+      throw IrError("too many indices for array argument");
+    }
+    std::vector<long long> remaining(symbol.dimensions.begin() +
+                                         consumed_dimensions,
+                                     symbol.dimensions.end());
+    while (remaining.size() > expected_dimensions.size()) {
+      std::string next = newTemp();
+      emit(next + " = getelemptr " + pointer + ", 0");
+      pointer = next;
+      remaining.erase(remaining.begin());
+    }
+    if (remaining != expected_dimensions) {
+      throw IrError("array argument type mismatch");
+    }
+    return pointer;
+  }
+
+  std::vector<Value> collectLValIndices(
+      const compiler::parser::ParseNode &lval) {
+    std::vector<Value> indices;
+    if (lval.children.size() < 2) {
+      return indices;
+    }
+    const compiler::parser::ParseNode *dims = lval.children[1].get();
+    while (dims != nullptr && !dims->children.empty()) {
+      if (dims->children.size() != 4) {
+        throw IrError("invalid LVal array dimensions");
+      }
+      indices.push_back(emitExpression(*dims->children[1]));
+      dims = dims->children[3].get();
+    }
+    return indices;
+  }
+
+  std::string emitArrayElementPointer(const std::string &base_pointer,
+                                      const std::vector<long long> &dimensions,
+                                      long long linear_index) {
+    std::vector<Value> indices;
+    for (size_t i = 0; i < dimensions.size(); ++i) {
+      long long stride = elementCount(dimensions, i + 1);
+      indices.push_back(makeConstant(linear_index / stride));
+      linear_index %= stride;
+    }
+    return emitArrayElementPointer(base_pointer, dimensions, indices, false);
+  }
+
+  std::string emitArrayElementPointer(const std::string &base_pointer,
+                                      const std::vector<long long> &dimensions,
+                                      const std::vector<Value> &indices,
+                                      bool first_getptr) {
+    size_t max_indices = dimensions.size() + (first_getptr ? 1 : 0);
+    if (indices.empty() || indices.size() > max_indices) {
+      throw IrError("invalid array index count");
+    }
+    std::string pointer = base_pointer;
+    for (size_t i = 0; i < indices.size(); ++i) {
+      std::string next = newTemp();
+      emit(next + " = " + std::string(first_getptr && i == 0 ? "getptr "
+                                                             : "getelemptr ") +
+           pointer + ", " + indices[i].operand);
+      pointer = next;
+    }
+    return pointer;
+  }
+
+  std::vector<long long> collectArrayDimensions(
+      const compiler::parser::ParseNode &node) {
+    std::vector<long long> dimensions;
+    const compiler::parser::ParseNode *current = &node;
+    while (current != nullptr && !current->children.empty()) {
+      if (current->children.size() != 4) {
+        throw IrError("invalid array dimensions");
+      }
+      Value value = emitExpression(*current->children[1]);
+      long long dimension = expectConstant(value, "array dimension");
+      if (dimension <= 0) {
+        throw IrError("array dimension must be positive");
+      }
+      dimensions.push_back(dimension);
+      current = current->children[3].get();
+    }
+    return dimensions;
+  }
+
+  void collectInitializerChildren(const compiler::parser::ParseNode &node,
+                                  std::vector<const compiler::parser::ParseNode *> &out) {
+    if (node.children.empty()) {
+      return;
+    }
+    if (node.symbol == "InitValListOpt" || node.symbol == "ConstInitValListOpt") {
+      out.push_back(node.children[0].get());
+      collectInitializerChildren(*node.children[1], out);
+      return;
+    }
+    if (node.symbol == "InitValListTail" ||
+        node.symbol == "ConstInitValListTail") {
+      if (node.children.empty()) {
+        return;
+      }
+      if (node.children.size() == 1) {
+        return;
+      }
+      out.push_back(node.children[1].get());
+      collectInitializerChildren(*node.children[2], out);
+      return;
+    }
+    throw IrError("invalid array initializer list: " + node.symbol);
+  }
+
+  bool isInitializerList(const compiler::parser::ParseNode &node) const {
+    return !node.children.empty() && node.children[0]->symbol == "LBRACE";
+  }
+
+  long long flattenRuntimeInitializer(
+      const compiler::parser::ParseNode &node,
+      const std::vector<long long> &dimensions, size_t depth, long long begin,
+      std::vector<std::pair<long long, Value>> &entries) {
+    if (!isInitializerList(node)) {
+      entries.push_back({begin, emitExpression(node)});
+      return begin + 1;
+    }
+
+    std::vector<const compiler::parser::ParseNode *> children;
+    collectInitializerChildren(*node.children[1], children);
+    long long cursor = begin;
+    long long limit = begin + elementCount(dimensions, depth);
+    for (const compiler::parser::ParseNode *child : children) {
+      if (isInitializerList(*child) && depth + 1 < dimensions.size()) {
+        size_t child_depth = depth + 1;
+        for (; child_depth < dimensions.size(); ++child_depth) {
+          long long sub_size = elementCount(dimensions, child_depth);
+          if ((cursor - begin) % sub_size == 0) {
+            break;
+          }
+        }
+        cursor =
+            flattenRuntimeInitializer(*child, dimensions, child_depth, cursor, entries);
+      } else {
+        cursor =
+            flattenRuntimeInitializer(*child, dimensions, dimensions.size(), cursor,
+                                      entries);
+      }
+      if (cursor > limit) {
+        throw IrError("too many array initializer values");
+      }
+    }
+    return limit;
   }
 
   Value makeConstant(long long value) const {
@@ -833,6 +1221,7 @@ private:
     std::string source_name;
     std::string koopa_name;
     std::string pointer;
+    std::string type;
   };
 
   void collectParameters() {
@@ -846,22 +1235,54 @@ private:
     std::vector<const compiler::parser::ParseNode *> param_nodes;
     collectNodes(*params_opt, "FuncFParam", param_nodes);
     for (const compiler::parser::ParseNode *param : param_nodes) {
-      if (hasNonEmptyChild(*param, "FuncFParamArrayOpt")) {
-        throw IrError("array function parameter is not supported yet");
-      }
       const compiler::parser::ParseNode *ident = findDirectChild(*param, "IDENT");
       if (ident == nullptr || ident->lexeme.empty()) {
         throw IrError("invalid function parameter");
       }
-      std::string pointer = newNamedValue(ident->lexeme);
       std::string koopa_name = newParameterValue(ident->lexeme);
+      std::vector<long long> dimensions = collectFunctionParameterDimensions(*param);
+      if (!dimensions.empty() || hasNonEmptyChild(*param, "FuncFParamArrayOpt")) {
+        std::string type = "*" + arrayType(dimensions);
+        define(ident->lexeme,
+               Symbol{SymbolKind::Variable, 0, koopa_name, dimensions, true, true});
+        parameters_.push_back(Parameter{ident->lexeme, koopa_name, "", type});
+        continue;
+      }
+      std::string pointer = newNamedValue(ident->lexeme);
       emitLocalAlloc(pointer + " = alloc i32");
-      define(ident->lexeme, Symbol{SymbolKind::Variable, 0, pointer});
-      parameters_.push_back(Parameter{ident->lexeme, koopa_name, pointer});
+      define(ident->lexeme,
+             Symbol{SymbolKind::Variable, 0, pointer, {}, true, false});
+      parameters_.push_back(Parameter{ident->lexeme, koopa_name, pointer, "i32"});
     }
   }
 
   std::string newTemp() { return "%" + std::to_string(temp_id_++); }
+
+  std::vector<long long> collectFunctionParameterDimensions(
+      const compiler::parser::ParseNode &param) {
+    std::vector<long long> dimensions;
+    const compiler::parser::ParseNode *array_opt =
+        findDirectChild(param, "FuncFParamArrayOpt");
+    if (array_opt == nullptr || array_opt->children.empty()) {
+      return dimensions;
+    }
+    const compiler::parser::ParseNode *current =
+        findDirectChild(*array_opt, "FuncFParamArrayDims");
+    while (current != nullptr && !current->children.empty()) {
+      if (current->children.size() != 4) {
+        throw IrError("invalid function parameter array dimensions");
+      }
+      long long dimension =
+          expectConstant(emitExpression(*current->children[1]),
+                         "function parameter array dimension");
+      if (dimension <= 0) {
+        throw IrError("array dimension must be positive");
+      }
+      dimensions.push_back(dimension);
+      current = current->children[3].get();
+    }
+    return dimensions;
+  }
 
   std::string newLabel(const std::string &prefix) {
     return "%" + prefix + "_" + std::to_string(label_id_++);
@@ -989,7 +1410,9 @@ public:
         if (i != 0) {
           output << ", ";
         }
-        output << "i32";
+        output << (i < signature.parameter_types.size()
+                       ? signature.parameter_types[i]
+                       : std::string("i32"));
       }
       output << ")";
       if (signature.return_type != "void") {
@@ -1011,16 +1434,24 @@ public:
 
 private:
   void collectFunctionSignatures(const compiler::parser::ParseNode &ast) {
-    function_signatures_["getint"] = FunctionSignature{"i32", 0, true};
-    function_signatures_["getch"] = FunctionSignature{"i32", 0, true};
-    function_signatures_["putint"] = FunctionSignature{"void", 1, true};
-    function_signatures_["putch"] = FunctionSignature{"void", 1, true};
-    function_signatures_["starttime"] = FunctionSignature{"void", 0, true};
-    function_signatures_["stoptime"] = FunctionSignature{"void", 0, true};
+    function_signatures_["getint"] = FunctionSignature{"i32", 0, true, {}};
+    function_signatures_["getch"] = FunctionSignature{"i32", 0, true, {}};
+    function_signatures_["getarray"] =
+        FunctionSignature{"i32", 1, true, {"*i32"}};
+    function_signatures_["putint"] =
+        FunctionSignature{"void", 1, true, {"i32"}};
+    function_signatures_["putch"] =
+        FunctionSignature{"void", 1, true, {"i32"}};
+    function_signatures_["putarray"] =
+        FunctionSignature{"void", 2, true, {"i32", "*i32"}};
+    function_signatures_["starttime"] = FunctionSignature{"void", 0, true, {}};
+    function_signatures_["stoptime"] = FunctionSignature{"void", 0, true, {}};
     used_values_.insert("@getint");
     used_values_.insert("@getch");
+    used_values_.insert("@getarray");
     used_values_.insert("@putint");
     used_values_.insert("@putch");
+    used_values_.insert("@putarray");
     used_values_.insert("@starttime");
     used_values_.insert("@stoptime");
 
@@ -1033,7 +1464,8 @@ private:
       }
       function_signatures_[name] =
           FunctionSignature{findFunctionReturnType(*function),
-                            countFunctionParameters(*function), false};
+                            countFunctionParameters(*function), false,
+                            collectFunctionParameterTypes(*function)};
       used_values_.insert("@" + name);
     }
   }
@@ -1048,6 +1480,39 @@ private:
     std::vector<const compiler::parser::ParseNode *> params;
     collectNodes(*params_opt, "FuncFParam", params);
     return params.size();
+  }
+
+  std::vector<std::string> collectFunctionParameterTypes(
+      const compiler::parser::ParseNode &function) {
+    const compiler::parser::ParseNode *params_opt =
+        findDirectChild(function, "FuncFParamsOpt");
+    if (params_opt == nullptr || params_opt->children.empty() ||
+        params_opt->children[0]->symbol == "VOID") {
+      return {};
+    }
+    std::vector<const compiler::parser::ParseNode *> params;
+    collectNodes(*params_opt, "FuncFParam", params);
+    std::vector<std::string> types;
+    for (const compiler::parser::ParseNode *param : params) {
+      const compiler::parser::ParseNode *array_opt =
+          findDirectChild(*param, "FuncFParamArrayOpt");
+      if (array_opt == nullptr || array_opt->children.empty()) {
+        types.push_back("i32");
+        continue;
+      }
+      std::vector<long long> dimensions;
+      const compiler::parser::ParseNode *current =
+          findDirectChild(*array_opt, "FuncFParamArrayDims");
+      while (current != nullptr && !current->children.empty()) {
+        long long dimension =
+            expectConstant(emitGlobalExpression(*current->children[1]),
+                           "function parameter array dimension");
+        dimensions.push_back(dimension);
+        current = current->children[3].get();
+      }
+      types.push_back("*" + arrayType(dimensions));
+    }
+    return types;
   }
 
   void collectGlobalDeclarations(const compiler::parser::ParseNode &node) {
@@ -1086,27 +1551,53 @@ private:
     if (node.children.size() != 4 || node.children[0]->symbol != "IDENT") {
       throw IrError("invalid ConstDef node");
     }
-    if (hasNonEmptyChild(node, "ConstArrayDims")) {
-      throw IrError("array constant is not supported yet: " +
-                    node.children[0]->lexeme);
+    std::vector<long long> dimensions =
+        collectGlobalArrayDimensions(*node.children[1]);
+    if (!dimensions.empty()) {
+      std::string pointer = newGlobalValue(node.children[0]->lexeme);
+      std::vector<long long> values(elementCount(dimensions), 0);
+      fillGlobalInitializer(*node.children[3], dimensions, 0, 0, values);
+      global_instructions_.push_back("global " + pointer + " = alloc " +
+                                     arrayType(dimensions) + ", " +
+                                     formatArrayInitializer(values, dimensions, 0, 0));
+      defineGlobal(node.children[0]->lexeme,
+                   Symbol{SymbolKind::Variable, 0, pointer, dimensions, false,
+                          false});
+      return;
     }
     long long value =
         expectConstant(emitGlobalExpression(*node.children[3]), "const initializer");
     defineGlobal(node.children[0]->lexeme,
-                 Symbol{SymbolKind::Constant, value, ""});
+                 Symbol{SymbolKind::Constant, value, "", {}, false, false});
   }
 
   void collectVarDef(const compiler::parser::ParseNode &node) {
     if (node.children.size() < 2 || node.children[0]->symbol != "IDENT") {
       throw IrError("invalid VarDef node");
     }
-    if (hasNonEmptyChild(node, "ConstArrayDims")) {
-      throw IrError("array variable is not supported yet: " +
-                    node.children[0]->lexeme);
-    }
-
     long long value = 0;
     bool has_initializer = false;
+    std::vector<long long> dimensions =
+        collectGlobalArrayDimensions(*node.children[1]);
+    if (!dimensions.empty()) {
+      std::string pointer = newGlobalValue(node.children[0]->lexeme);
+      std::vector<long long> values(elementCount(dimensions), 0);
+      if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
+        fillGlobalInitializer(*node.children[2]->children[1], dimensions, 0, 0,
+                              values);
+        global_instructions_.push_back("global " + pointer + " = alloc " +
+                                       arrayType(dimensions) + ", " +
+                                       formatArrayInitializer(values, dimensions, 0,
+                                                              0));
+      } else {
+        global_instructions_.push_back("global " + pointer + " = alloc " +
+                                       arrayType(dimensions) + ", zeroinit");
+      }
+      defineGlobal(node.children[0]->lexeme,
+                   Symbol{SymbolKind::Variable, 0, pointer, dimensions, true,
+                          false});
+      return;
+    }
     if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
       has_initializer = true;
       value = expectConstant(emitGlobalExpression(*node.children[2]->children[1]),
@@ -1117,7 +1608,7 @@ private:
                                    (has_initializer ? std::to_string(value)
                                                     : "zeroinit"));
     defineGlobal(node.children[0]->lexeme,
-                 Symbol{SymbolKind::Variable, 0, pointer});
+                 Symbol{SymbolKind::Variable, 0, pointer, {}, true, false});
   }
 
   Value emitGlobalExpression(const compiler::parser::ParseNode &node) {
@@ -1194,6 +1685,111 @@ private:
                                  rhs.const_value);
     return emitGlobalTail(*node.children[2],
                           Value{true, value, toOperand(value)});
+  }
+
+  std::vector<long long> collectGlobalArrayDimensions(
+      const compiler::parser::ParseNode &node) {
+    std::vector<long long> dimensions;
+    const compiler::parser::ParseNode *current = &node;
+    while (current != nullptr && !current->children.empty()) {
+      if (current->children.size() != 4) {
+        throw IrError("invalid global array dimensions");
+      }
+      long long dimension =
+          expectConstant(emitGlobalExpression(*current->children[1]),
+                         "global array dimension");
+      if (dimension <= 0) {
+        throw IrError("array dimension must be positive");
+      }
+      dimensions.push_back(dimension);
+      current = current->children[3].get();
+    }
+    return dimensions;
+  }
+
+  void collectInitializerChildren(const compiler::parser::ParseNode &node,
+                                  std::vector<const compiler::parser::ParseNode *> &out) {
+    if (node.children.empty()) {
+      return;
+    }
+    if (node.symbol == "InitValListOpt" || node.symbol == "ConstInitValListOpt") {
+      out.push_back(node.children[0].get());
+      collectInitializerChildren(*node.children[1], out);
+      return;
+    }
+    if (node.symbol == "InitValListTail" ||
+        node.symbol == "ConstInitValListTail") {
+      if (node.children.empty() || node.children.size() == 1) {
+        return;
+      }
+      out.push_back(node.children[1].get());
+      collectInitializerChildren(*node.children[2], out);
+      return;
+    }
+    throw IrError("invalid global array initializer list: " + node.symbol);
+  }
+
+  bool isInitializerList(const compiler::parser::ParseNode &node) const {
+    return !node.children.empty() && node.children[0]->symbol == "LBRACE";
+  }
+
+  long long fillGlobalInitializer(const compiler::parser::ParseNode &node,
+                                  const std::vector<long long> &dimensions,
+                                  size_t depth, long long begin,
+                                  std::vector<long long> &values) {
+    if (!isInitializerList(node)) {
+      if (begin < 0 || begin >= static_cast<long long>(values.size())) {
+        throw IrError("too many global array initializer values");
+      }
+      values[begin] =
+          expectConstant(emitGlobalExpression(node), "global array initializer");
+      return begin + 1;
+    }
+
+    std::vector<const compiler::parser::ParseNode *> children;
+    collectInitializerChildren(*node.children[1], children);
+    long long cursor = begin;
+    long long limit = begin + elementCount(dimensions, depth);
+    for (const compiler::parser::ParseNode *child : children) {
+      if (isInitializerList(*child) && depth + 1 < dimensions.size()) {
+        size_t child_depth = depth + 1;
+        for (; child_depth < dimensions.size(); ++child_depth) {
+          long long sub_size = elementCount(dimensions, child_depth);
+          if ((cursor - begin) % sub_size == 0) {
+            break;
+          }
+        }
+        cursor = fillGlobalInitializer(*child, dimensions, child_depth, cursor,
+                                       values);
+      } else {
+        cursor = fillGlobalInitializer(*child, dimensions, dimensions.size(),
+                                       cursor, values);
+      }
+      if (cursor > limit) {
+        throw IrError("too many global array initializer values");
+      }
+    }
+    return limit;
+  }
+
+  std::string formatArrayInitializer(const std::vector<long long> &values,
+                                     const std::vector<long long> &dimensions,
+                                     size_t depth, long long begin) {
+    if (depth == dimensions.size()) {
+      return std::to_string(values[begin]);
+    }
+    long long sub_size = elementCount(dimensions, depth + 1);
+    std::ostringstream output;
+    output << "{";
+    for (long long i = 0; i < dimensions[depth]; ++i) {
+      if (i != 0) {
+        output << ", ";
+      }
+      output << formatArrayInitializer(values, dimensions, depth + 1,
+                                       begin + i * sub_size);
+    }
+    output << "}";
+    return output.str();
   }
 
   std::string newGlobalValue(const std::string &name) {

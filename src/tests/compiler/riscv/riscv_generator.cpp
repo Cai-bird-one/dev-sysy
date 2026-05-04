@@ -87,6 +87,51 @@ TEST_CASE(riscv_generator_handles_global_variables) {
   EXPECT_TRUE(riscv.find("lw t0, 0(t0)") != std::string::npos);
 }
 
+TEST_CASE(riscv_generator_handles_arrays_and_getelemptr) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(
+      "global @a = alloc [[i32, 3], 2], {{1, 2, 0}, {3, 0, 0}}\n"
+      "\n"
+      "fun @main(): i32 {\n"
+      "%entry:\n"
+      "  %b = alloc [i32, 2]\n"
+      "  %0 = getelemptr @a, 1\n"
+      "  %1 = getelemptr %0, 2\n"
+      "  store 4, %1\n"
+      "  %2 = getelemptr %b, 0\n"
+      "  store 5, %2\n"
+      "  %3 = load %1\n"
+      "  ret %3\n"
+      "}\n");
+
+  EXPECT_TRUE(riscv.find("a:\n  .word 1\n  .word 2\n  .word 0\n  .word 3") !=
+              std::string::npos);
+  EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
+  EXPECT_TRUE(riscv.find("li t2, 4") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw t0, 0(t1)") != std::string::npos);
+}
+
+TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(
+      "fun @sum(@a: *i32, @b: *[i32, 3]): i32 {\n"
+      "%entry:\n"
+      "  %0 = getptr @a, 1\n"
+      "  %1 = load %0\n"
+      "  %2 = getptr @b, 1\n"
+      "  %3 = getelemptr %2, 2\n"
+      "  %4 = load %3\n"
+      "  %5 = add %1, %4\n"
+      "  ret %5\n"
+      "}\n");
+
+  EXPECT_TRUE(riscv.find("sum:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw a0") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw a1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
+  EXPECT_TRUE(riscv.find("li t2, 4") != std::string::npos);
+}
+
 TEST_CASE(riscv_generator_handles_comparisons) {
   riscv::RiscvGenerator generator;
   std::string riscv = generator.generate("fun @main(): i32 {\n"

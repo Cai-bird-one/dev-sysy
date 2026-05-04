@@ -456,6 +456,44 @@ TEST_CASE(koopa_generator_avoids_global_and_parameter_name_collisions) {
   EXPECT_TRUE(koopa.find("store @n, %n") == std::string::npos);
 }
 
+TEST_CASE(koopa_generator_emits_array_declarations_and_accesses) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int a[2][3]={{1,2},{3}};"
+      "int main(){int b[2]={4};a[1][2]=b[0];return a[0][1];}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("global @a = alloc [[i32, 3], 2], "
+                         "{{1, 2, 0}, {3, 0, 0}}") != std::string::npos);
+  EXPECT_TRUE(koopa.find("%b = alloc [i32, 2]") != std::string::npos);
+  EXPECT_TRUE(koopa.find("getelemptr @a, 1") != std::string::npos);
+  EXPECT_TRUE(koopa.find("getelemptr %b, 0") != std::string::npos);
+}
+
+TEST_CASE(koopa_generator_decays_array_arguments) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "int sum(int a[], int b[][3]){return a[1]+b[1][2];}"
+      "int main(){int x[4];int y[2][3];return sum(x,y);}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+  std::string koopa = generator.generate(*ast);
+
+  EXPECT_TRUE(koopa.find("fun @sum(@sum_a: *i32, @sum_b: *[i32, 3]): i32") !=
+              std::string::npos);
+  EXPECT_TRUE(koopa.find("getptr @sum_a, 1") != std::string::npos);
+  EXPECT_TRUE(koopa.find("getptr @sum_b, 1") != std::string::npos);
+  EXPECT_TRUE(koopa.find("call @sum(") != std::string::npos);
+  EXPECT_TRUE(koopa.find("getelemptr %x, 0") != std::string::npos);
+  EXPECT_TRUE(koopa.find("getelemptr %y, 0") != std::string::npos);
+}
+
 TEST_CASE(koopa_generator_rejects_duplicate_names_in_same_scope) {
   lexer::Lexer lexer = lexer::buildDefaultLexer();
   parser::Parser parser = parser::buildDefaultParser();
