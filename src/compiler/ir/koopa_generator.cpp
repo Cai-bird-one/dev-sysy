@@ -61,6 +61,10 @@ bool hasNonEmptyChild(const compiler::parser::ParseNode &node,
 
 std::string toOperand(long long value) { return std::to_string(value); }
 
+bool startsWith(const std::string &text, const std::string &prefix) {
+  return text.rfind(prefix, 0) == 0;
+}
+
 std::string koopaOp(const std::string &token) {
   if (token == "PLUS") {
     return "add";
@@ -168,9 +172,9 @@ public:
       throw IrError("cannot find function block in AST");
     }
 
-    emitBlock(*block, true);
-    if (!returned_) {
-      throw IrError("cannot find return expression in AST");
+    bool block_returned = emitBlock(*block, true);
+    if (!block_returned && !block_terminated_) {
+      emit("ret 0");
     }
 
     std::ostringstream output;
@@ -660,6 +664,9 @@ private:
   }
 
   void emit(std::string instruction) {
+    if (isTerminator(instruction)) {
+      block_terminated_ = true;
+    }
     instructions_.push_back(std::move(instruction));
   }
 
@@ -668,7 +675,13 @@ private:
   }
 
   void emitLabel(const std::string &label) {
+    block_terminated_ = false;
     emit(label + ":");
+  }
+
+  bool isTerminator(const std::string &instruction) const {
+    return startsWith(instruction, "br ") || startsWith(instruction, "jump ") ||
+           startsWith(instruction, "ret ");
   }
 
   std::string newTemp() { return "%" + std::to_string(temp_id_++); }
@@ -729,6 +742,7 @@ private:
   std::vector<LoopLabels> loop_stack_;
   int temp_id_ = 0;
   int label_id_ = 0;
+  bool block_terminated_ = false;
   bool returned_ = false;
 };
 
