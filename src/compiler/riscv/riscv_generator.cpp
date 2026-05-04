@@ -344,7 +344,7 @@ private:
     if (found == stack_offsets_.end()) {
       throw RiscvError("unknown Koopa value: " + operand);
     }
-    output << "  lw " << reg << ", " << found->second << "(sp)\n";
+    loadFromStack(found->second, reg, output);
   }
 
   void loadFromPointer(const std::string &pointer, const std::string &reg,
@@ -358,7 +358,7 @@ private:
     if (found == stack_offsets_.end()) {
       throw RiscvError("unknown Koopa pointer: " + pointer);
     }
-    output << "  lw " << reg << ", " << found->second << "(sp)\n";
+    loadFromStack(found->second, reg, output);
   }
 
   void storeToPointer(const std::string &reg, const std::string &pointer,
@@ -377,7 +377,31 @@ private:
     if (found == stack_offsets_.end()) {
       throw RiscvError("unknown Koopa stack value: " + value);
     }
-    output << "  sw " << reg << ", " << found->second << "(sp)\n";
+    storeToStack(reg, found->second, output);
+  }
+
+  bool fitsSigned12Bit(int value) const {
+    return value >= -2048 && value <= 2047;
+  }
+
+  void loadFromStack(int offset, const std::string &reg, std::ostream &output) {
+    if (fitsSigned12Bit(offset)) {
+      output << "  lw " << reg << ", " << offset << "(sp)\n";
+      return;
+    }
+    output << "  li t2, " << offset << "\n"
+           << "  add t2, sp, t2\n"
+           << "  lw " << reg << ", 0(t2)\n";
+  }
+
+  void storeToStack(const std::string &reg, int offset, std::ostream &output) {
+    if (fitsSigned12Bit(offset)) {
+      output << "  sw " << reg << ", " << offset << "(sp)\n";
+      return;
+    }
+    output << "  li t2, " << offset << "\n"
+           << "  add t2, sp, t2\n"
+           << "  sw " << reg << ", 0(t2)\n";
   }
 
   void adjustStack(std::ostream &output, int amount) {

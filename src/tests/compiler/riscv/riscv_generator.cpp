@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <sstream>
+#include <string>
 
 using namespace compiler;
 
@@ -114,4 +115,21 @@ TEST_CASE(riscv_generator_handles_branches_and_jumps) {
   EXPECT_TRUE(riscv.find("j else") != std::string::npos);
   EXPECT_TRUE(riscv.find("then:\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("j then") != std::string::npos);
+}
+
+TEST_CASE(riscv_generator_handles_large_stack_offsets) {
+  std::ostringstream koopa;
+  koopa << "fun @main(): i32 {\n%entry:\n";
+  for (int i = 0; i < 600; ++i) {
+    koopa << "  %" << i << " = add " << i << ", 1\n";
+  }
+  koopa << "  ret %599\n}\n";
+
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(koopa.str());
+
+  EXPECT_TRUE(riscv.find("li t2, 2396") != std::string::npos);
+  EXPECT_TRUE(riscv.find("add t2, sp, t2") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw t0, 0(t2)") != std::string::npos);
+  EXPECT_TRUE(riscv.find("lw a0, 0(t2)") != std::string::npos);
 }
