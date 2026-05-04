@@ -111,10 +111,38 @@ TEST_CASE(riscv_generator_handles_branches_and_jumps) {
                                          "  jump %then\n"
                                          "}\n");
 
-  EXPECT_TRUE(riscv.find("bnez t0, then") != std::string::npos);
-  EXPECT_TRUE(riscv.find("j else") != std::string::npos);
-  EXPECT_TRUE(riscv.find("then:\n") != std::string::npos);
-  EXPECT_TRUE(riscv.find("j then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("bnez t0, main_then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("j main_else") != std::string::npos);
+  EXPECT_TRUE(riscv.find("main_then:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("j main_then") != std::string::npos);
+}
+
+TEST_CASE(riscv_generator_keeps_control_flow_labels_function_local) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(
+      "fun @f(): i32 {\n"
+      "%entry:\n"
+      "  br 1, %then, %end\n"
+      "%then:\n"
+      "  jump %end\n"
+      "%end:\n"
+      "  ret 0\n"
+      "}\n"
+      "\n"
+      "fun @g(): i32 {\n"
+      "%entry:\n"
+      "  br 1, %then, %end\n"
+      "%then:\n"
+      "  jump %end\n"
+      "%end:\n"
+      "  ret 1\n"
+      "}\n");
+
+  EXPECT_TRUE(riscv.find("bnez t0, f_then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("j f_end") != std::string::npos);
+  EXPECT_TRUE(riscv.find("f_then:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("g_then:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("\nthen:\n") == std::string::npos);
 }
 
 TEST_CASE(riscv_generator_handles_large_stack_offsets) {

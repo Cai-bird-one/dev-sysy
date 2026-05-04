@@ -326,7 +326,7 @@ private:
       if (label == "%entry") {
         return;
       }
-      output << stripSigil(label) << ":\n";
+      output << asmLabel(label) << ":\n";
       return;
     }
 
@@ -335,8 +335,8 @@ private:
         throw RiscvError("invalid branch instruction: " + line);
       }
       loadOperand(parts[1], "t0", output);
-      output << "  bnez t0, " << stripSigil(parts[2]) << "\n"
-             << "  j " << stripSigil(parts[3]) << "\n";
+      output << "  bnez t0, " << asmLabel(parts[2]) << "\n"
+             << "  j " << asmLabel(parts[3]) << "\n";
       return;
     }
 
@@ -344,7 +344,7 @@ private:
       if (parts.size() != 2) {
         throw RiscvError("invalid jump instruction: " + line);
       }
-      output << "  j " << stripSigil(parts[1]) << "\n";
+      output << "  j " << asmLabel(parts[1]) << "\n";
       return;
     }
 
@@ -459,6 +459,10 @@ private:
              << "  snez t0, t0\n";
       return;
     }
+  }
+
+  std::string asmLabel(const std::string &koopa_label) const {
+    return function_.name + "_" + stripSigil(koopa_label);
   }
 
   void loadOperand(const std::string &operand, const std::string &reg,
