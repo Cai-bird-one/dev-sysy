@@ -20,6 +20,7 @@ bool isLabel(const std::string &line);
 bool isTerminator(const std::string &line);
 bool isSideEffectFree(const Assignment &assignment);
 std::vector<std::string> splitWhitespace(const std::string &text);
+std::vector<std::string> collectValueNames(const std::string &text);
 Assignment parseAssignment(const std::string &line);
 std::string formatAssignment(const Assignment &assignment);
 std::string replaceOperands(

@@ -10,11 +10,10 @@ namespace compiler::ir::opt {
 PassResult DeadCodeEliminationPass::run(IrFunction &function) {
   std::map<std::string, int> uses;
   for (const std::string &line : function.instructions) {
-    std::vector<std::string> parts = splitWhitespace(line);
-    size_t begin = parts.size() >= 3 && parts[1] == "=" ? 3 : 0;
-    for (size_t i = begin; i < parts.size(); ++i) {
-      if (startsWith(parts[i], "%") || startsWith(parts[i], "@")) {
-        ++uses[parts[i]];
+    Assignment assignment = parseAssignment(line);
+    for (const std::string &name : collectValueNames(line)) {
+      if (!assignment.valid || name != assignment.result) {
+        ++uses[name];
       }
     }
   }

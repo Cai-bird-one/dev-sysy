@@ -3,6 +3,7 @@
 #include "compiler/ir/koopa_generator.h"
 
 #include <cctype>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 
@@ -68,6 +69,27 @@ std::vector<std::string> splitWhitespace(const std::string &text) {
   return parts;
 }
 
+std::vector<std::string> collectValueNames(const std::string &text) {
+  std::vector<std::string> names;
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] != '%' && text[i] != '@') {
+      continue;
+    }
+    size_t begin = i;
+    ++i;
+    while (i < text.size() &&
+           (std::isalnum(static_cast<unsigned char>(text[i])) ||
+            text[i] == '_')) {
+      ++i;
+    }
+    names.push_back(text.substr(begin, i - begin));
+    if (i > begin) {
+      --i;
+    }
+  }
+  return names;
+}
+
 Assignment parseAssignment(const std::string &line) {
   std::vector<std::string> parts = splitWhitespace(line);
   if (parts.size() < 3 || parts[1] != "=") {
@@ -106,34 +128,32 @@ bool isSideEffectFree(const Assignment &assignment) {
 std::string replaceOperands(
     const std::string &line,
     const std::vector<std::pair<std::string, std::string>> &replacements) {
-  std::vector<std::string> parts = splitWhitespace(line);
-  if (parts.empty()) {
-    return line;
+  std::map<std::string, std::string> replacement_map;
+  for (const auto &replacement : replacements) {
+    replacement_map[replacement.first] = replacement.second;
   }
-  for (std::string &part : parts) {
-    for (const auto &replacement : replacements) {
-      if (part == replacement.first) {
-        part = replacement.second;
-      }
+
+  std::string result;
+  for (size_t i = 0; i < line.size(); ++i) {
+    if (line[i] != '%' && line[i] != '@') {
+      result.push_back(line[i]);
+      continue;
+    }
+    size_t begin = i;
+    ++i;
+    while (i < line.size() &&
+           (std::isalnum(static_cast<unsigned char>(line[i])) ||
+            line[i] == '_')) {
+      ++i;
+    }
+    std::string name = line.substr(begin, i - begin);
+    auto found = replacement_map.find(name);
+    result += found == replacement_map.end() ? name : found->second;
+    if (i < line.size()) {
+      --i;
     }
   }
-  if (parts.size() >= 3 && parts[1] == "=") {
-    Assignment assignment;
-    assignment.valid = true;
-    assignment.result = parts[0];
-    assignment.op = parts[2];
-    assignment.args.assign(parts.begin() + 3, parts.end());
-    return formatAssignment(assignment);
-  }
-  std::ostringstream output;
-  for (size_t i = 0; i < parts.size(); ++i) {
-    output << (i == 0 ? "" : " ") << parts[i];
-    if ((parts[0] == "br" && i >= 1 && i < 3) ||
-        (parts[0] == "store" && i == 1)) {
-      output << ",";
-    }
-  }
-  return output.str();
+  return result;
 }
 
 long long evaluateBinary(const std::string &op, long long lhs, long long rhs) {
