@@ -107,7 +107,7 @@ case "${command}" in
       exit 1
     fi
     docker_run bash -lc \
-      'clang++ -std=c++17 -Isrc tools/dump_koopa.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/automaton.cpp src/compiler/lexer/regex.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/parser_analysis.cpp src/compiler/parser/parse_tree.cpp src/compiler/parser/grammar_rules.cpp src/compiler/ir/koopa_generator.cpp -o /tmp/dump_koopa && /tmp/dump_koopa "$1"' \
+      'clang++ -std=c++17 -Isrc tools/dump_koopa.cpp src/compiler/lexer/lexer.cpp src/compiler/lexer/automaton.cpp src/compiler/lexer/regex.cpp src/compiler/lexer/token_rules.cpp src/compiler/parser/parser.cpp src/compiler/parser/parser_analysis.cpp src/compiler/parser/parse_tree.cpp src/compiler/parser/grammar_rules.cpp src/compiler/ir/koopa_generator.cpp src/compiler/ir/semantic.cpp -o /tmp/dump_koopa && /tmp/dump_koopa "$1"' \
       bash "$1"
     ;;
   run)

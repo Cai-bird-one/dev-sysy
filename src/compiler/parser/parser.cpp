@@ -89,6 +89,7 @@ Parser::parseSymbol(const std::string &symbol,
   for (int production_id : production_found->second) {
     const Production &production = productions_[production_id];
     auto node = std::make_unique<ParseNode>(symbol);
+    node->production_id = production_id;
     size_t trial_pos = input_pos;
     try {
       for (const std::string &child_symbol : production.rhs) {

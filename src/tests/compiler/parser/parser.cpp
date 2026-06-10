@@ -18,9 +18,17 @@ TEST_CASE(parser_parses_minimal_function) {
   std::unique_ptr<ParseNode> tree = parser.parse(tokens);
 
   EXPECT_EQ(tree->symbol, "CompUnit");
+  EXPECT_TRUE(tree->production_id >= 0);
   EXPECT_EQ(tree->children.size(), 2u);
   EXPECT_EQ(tree->children[0]->symbol, "TopItem");
   EXPECT_EQ(tree->children[1]->symbol, "CompUnitTail");
+  EXPECT_TRUE(tree->children[0]->children[0]->children[0]->production_id >= 0);
+  EXPECT_EQ(tree->children[0]
+                ->children[0]
+                ->children[0]
+                ->children[0]
+                ->production_id,
+            -1);
 }
 
 TEST_CASE(parser_parses_global_const_before_function) {

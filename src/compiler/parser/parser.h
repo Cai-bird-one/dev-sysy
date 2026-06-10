@@ -25,6 +25,7 @@ struct Grammar {
 struct ParseNode {
   std::string symbol;
   std::string lexeme;
+  int production_id = -1;
   std::vector<std::unique_ptr<ParseNode>> children;
 
   explicit ParseNode(std::string symbol);
