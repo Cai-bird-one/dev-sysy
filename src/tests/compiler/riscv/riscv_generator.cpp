@@ -249,3 +249,20 @@ TEST_CASE(riscv_generator_handles_functions_and_calls) {
   EXPECT_TRUE(riscv.find("call add") != std::string::npos);
   EXPECT_TRUE(riscv.find("lw ra") != std::string::npos);
 }
+
+TEST_CASE(riscv_generator_optimized_output_uses_peephole_pass) {
+  riscv::RiscvGenerator generator;
+  std::string normal = generator.generate("fun @main(): i32 {\n"
+                                          "%entry:\n"
+                                          "  %0 = add 1, 2\n"
+                                          "  ret %0\n"
+                                          "}\n");
+  std::string optimized = generator.generateOptimized("fun @main(): i32 {\n"
+                                                      "%entry:\n"
+                                                      "  %0 = add 1, 2\n"
+                                                      "  ret %0\n"
+                                                      "}\n");
+
+  EXPECT_TRUE(normal.find("  lw a0, ") != std::string::npos);
+  EXPECT_TRUE(optimized.find("  mv a0, t0\n") != std::string::npos);
+}

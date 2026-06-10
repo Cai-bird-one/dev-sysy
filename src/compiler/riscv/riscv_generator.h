@@ -14,7 +14,10 @@ public:
 class RiscvGenerator {
 public:
   std::string generate(const std::string &koopa_ir) const;
+  std::string generateOptimized(const std::string &koopa_ir) const;
   void generate(const std::string &koopa_ir, std::ostream &output) const;
+  void generateOptimized(const std::string &koopa_ir,
+                         std::ostream &output) const;
 };
 
 } // namespace compiler::riscv

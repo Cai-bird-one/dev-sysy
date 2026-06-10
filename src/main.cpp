@@ -36,7 +36,7 @@ public:
 CompilerOptions parseOptions(int argc, const char *argv[]) {
   if (argc != 5) {
     throw CliError(
-        "usage: compiler (-koopa|-riscv) <input-file> -o <output-file>");
+        "usage: compiler (-koopa|-riscv|-perf) <input-file> -o <output-file>");
   }
   if (std::string(argv[3]) != "-o") {
     throw CliError("missing -o before output file");
@@ -83,6 +83,21 @@ void compileToRiscv(const CompilerOptions &options) {
   compiler::riscv::RiscvGenerator riscv_generator;
 
   riscv_generator.generate(koopa_generator.generate(*ast), output);
+}
+
+void compileToOptimizedRiscv(const CompilerOptions &options) {
+  std::unique_ptr<compiler::parser::ParseNode> ast =
+      parseSource(options.input_path);
+
+  std::ofstream output(options.output_path);
+  if (!output) {
+    throw OutputFileError("cannot open output file: " + options.output_path);
+  }
+
+  compiler::ir::KoopaGenerator koopa_generator;
+  compiler::riscv::RiscvGenerator riscv_generator;
+
+  riscv_generator.generateOptimized(koopa_generator.generate(*ast), output);
 }
 
 bool contains(const std::string &text, const std::string &pattern) {
@@ -153,6 +168,8 @@ int main(int argc, const char *argv[]) {
       compileToKoopa(options);
     } else if (options.mode == "-riscv") {
       compileToRiscv(options);
+    } else if (options.mode == "-perf") {
+      compileToOptimizedRiscv(options);
     } else {
       throw CliError("unsupported output mode: " + options.mode);
     }

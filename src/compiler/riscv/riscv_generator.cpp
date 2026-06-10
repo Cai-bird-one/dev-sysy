@@ -3,6 +3,7 @@
 #include "compiler/riscv/emit/assembly_emitter.h"
 #include "compiler/riscv/emit/function_emitter.h"
 #include "compiler/riscv/model/koopa_program.h"
+#include "compiler/riscv/opt/peephole_optimizer.h"
 
 #include <map>
 #include <ostream>
@@ -47,6 +48,12 @@ std::string RiscvGenerator::generate(const std::string &koopa_ir) const {
   return output.str();
 }
 
+std::string
+RiscvGenerator::generateOptimized(const std::string &koopa_ir) const {
+  PeepholeOptimizer optimizer;
+  return optimizer.optimize(generate(koopa_ir));
+}
+
 void RiscvGenerator::generate(const std::string &koopa_ir,
                               std::ostream &output) const {
   Program program = parseProgram(koopa_ir);
@@ -59,6 +66,11 @@ void RiscvGenerator::generate(const std::string &koopa_ir,
     FunctionEmitter emitter(std::move(function), global_dimensions);
     emitter.emit(output);
   }
+}
+
+void RiscvGenerator::generateOptimized(const std::string &koopa_ir,
+                                       std::ostream &output) const {
+  output << generateOptimized(koopa_ir);
 }
 
 } // namespace compiler::riscv
