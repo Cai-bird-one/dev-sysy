@@ -1,40 +1,10 @@
 #include "compiler/ir/emit/expression/runtime_expression_translator.h"
 
-#include "compiler/ir/emit/expression/expression_nodes.h"
 #include "compiler/ir/koopa_generator.h"
 
 #include <cstdlib>
 
 namespace compiler::ir {
-
-Value RuntimeExpressionTranslator::emitByShape(
-    const compiler::parser::ParseNode &node) const {
-  if (node.symbol == "INT_CONST") {
-    return emitNumber(node);
-  }
-  if (node.symbol == "LVal") {
-    return emitLValExpression(node);
-  }
-  if (isExpressionWrapper(node.symbol)) {
-    if (node.children.size() == 3 && node.children[0]->symbol == "LPAREN") {
-      return translate(*node.children[1]);
-    }
-    return translateSingleChild(node);
-  }
-  if (node.symbol == "UnaryExp") {
-    if (node.children.size() == 4) {
-      return emitCallExpression(node);
-    }
-    if (node.children.size() == 1) {
-      return translateSingleChild(node);
-    }
-    return emitUnaryExpression(node);
-  }
-  if (isBinaryExpression(node.symbol)) {
-    return emitBinaryExpression(node, binaryTailSymbol(node.symbol));
-  }
-  throw IrError("unsupported expression node: " + node.symbol);
-}
 
 Value RuntimeExpressionTranslator::emitNumber(
     const compiler::parser::ParseNode &node) const {

@@ -10,9 +10,10 @@ namespace compiler::ir {
 StatementTranslator::StatementTranslator(StatementEmitContext &context)
     : context_(context) {
   translator_.setDefaultRule(
-      [this](const compiler::parser::ParseNode &node,
+      [](const compiler::parser::ParseNode &node,
              const sdt::SyntaxDirectedTranslator &) -> sdt::AttributeSet {
-        return returnedAttribute(emitByShape(node));
+        throw IrError("unsupported statement production in Koopa generation: " +
+                      node.symbol);
       });
 
   registerRule("Stmt", {"LVal", "ASSIGN", "Exp", "SEMICOLON"},
@@ -48,45 +49,6 @@ sdt::AttributeSet StatementTranslator::returnedAttribute(bool returned) const {
   sdt::AttributeSet attributes;
   attributes.set("returned", returned);
   return attributes;
-}
-
-bool StatementTranslator::emitByShape(
-    const compiler::parser::ParseNode &node) const {
-  if (node.symbol != "Stmt" || node.children.empty()) {
-    throw IrError("unsupported statement in Koopa generation: " + node.symbol);
-  }
-
-  const std::string &first = node.children[0]->symbol;
-  if (first == "RETURN") {
-    return emitReturnStatement(node);
-  }
-  if (first == "LVal" && node.children.size() >= 3 &&
-      node.children[1]->symbol == "ASSIGN") {
-    return emitAssignmentStatement(node);
-  }
-  if (first == "IF") {
-    return emitIfStatement(node);
-  }
-  if (first == "WHILE") {
-    return emitWhileStatement(node);
-  }
-  if (first == "BREAK") {
-    return emitBreakStatement(node);
-  }
-  if (first == "CONTINUE") {
-    return emitContinueStatement(node);
-  }
-  if (first == "Block") {
-    return emitBlockStatement(node);
-  }
-  if (first == "Exp") {
-    return emitExpressionStatement(node);
-  }
-  if (first == "SEMICOLON") {
-    return emitEmptyStatement(node);
-  }
-
-  throw IrError("unsupported statement in Koopa generation: " + first);
 }
 
 void StatementTranslator::registerRule(

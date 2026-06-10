@@ -30,7 +30,6 @@ private:
       void (DeclarationTranslator::*)(const compiler::parser::ParseNode &) const;
 
   sdt::AttributeSet doneAttribute() const;
-  void emitByShape(const compiler::parser::ParseNode &node) const;
   void walkChildren(const compiler::parser::ParseNode &node) const;
   void emitConstDefinitionNode(const compiler::parser::ParseNode &node) const;
   void emitVarDefinitionNode(const compiler::parser::ParseNode &node) const;

@@ -11,9 +11,11 @@ RuntimeExpressionTranslator::RuntimeExpressionTranslator(
     RuntimeExpressionContext &context)
     : context_(context) {
   translator_.setDefaultRule(
-      [this](const compiler::parser::ParseNode &node,
-             const sdt::SyntaxDirectedTranslator &) {
-        return valueAttribute(emitByShape(node));
+      [](const compiler::parser::ParseNode &node,
+         const sdt::SyntaxDirectedTranslator &) -> sdt::AttributeSet {
+        throw IrError(
+            "unsupported expression production in Koopa generation: " +
+            node.symbol);
       });
 
   registerRule("Number", {"INT_CONST"},

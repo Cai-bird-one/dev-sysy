@@ -50,7 +50,6 @@ private:
       bool (StatementTranslator::*)(const compiler::parser::ParseNode &) const;
 
   sdt::AttributeSet returnedAttribute(bool returned) const;
-  bool emitByShape(const compiler::parser::ParseNode &node) const;
   void registerRule(const std::string &lhs,
                     std::initializer_list<std::string> rhs,
                     StatementRule rule);

@@ -12,7 +12,7 @@ DeclarationTranslator::DeclarationTranslator(DeclarationContext &context)
   translator_.setDefaultRule(
       [this](const compiler::parser::ParseNode &node,
              const sdt::SyntaxDirectedTranslator &) {
-        emitByShape(node);
+        walkChildren(node);
         return doneAttribute();
       });
 
@@ -48,19 +48,6 @@ sdt::AttributeSet DeclarationTranslator::doneAttribute() const {
   sdt::AttributeSet attributes;
   attributes.set("done", true);
   return attributes;
-}
-
-void DeclarationTranslator::emitByShape(
-    const compiler::parser::ParseNode &node) const {
-  if (node.symbol == "ConstDef") {
-    emitConstDefinitionNode(node);
-    return;
-  }
-  if (node.symbol == "VarDef") {
-    emitVarDefinitionNode(node);
-    return;
-  }
-  walkChildren(node);
 }
 
 void DeclarationTranslator::walkChildren(

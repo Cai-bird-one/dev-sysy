@@ -37,7 +37,6 @@ private:
           const compiler::parser::ParseNode &) const;
 
   sdt::AttributeSet valueAttribute(Value value) const;
-  Value emitByShape(const compiler::parser::ParseNode &node) const;
   Value emitNumber(const compiler::parser::ParseNode &node) const;
   Value emitParenthesizedExpression(
       const compiler::parser::ParseNode &node) const;
