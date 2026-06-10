@@ -1,4 +1,5 @@
 #include "compiler/ir/koopa_generator.h"
+#include "compiler/ir/opt/ir_optimizer.h"
 #include "compiler/lexer/token_rules.h"
 #include "compiler/parser/grammar_rules.h"
 #include "compiler/riscv/riscv_generator.h"
@@ -95,9 +96,11 @@ void compileToOptimizedRiscv(const CompilerOptions &options) {
   }
 
   compiler::ir::KoopaGenerator koopa_generator;
+  compiler::ir::opt::IrOptimizer ir_optimizer;
   compiler::riscv::RiscvGenerator riscv_generator;
 
-  riscv_generator.generateOptimized(koopa_generator.generate(*ast), output);
+  std::string koopa = koopa_generator.generate(*ast);
+  riscv_generator.generateOptimized(ir_optimizer.optimize(koopa), output);
 }
 
 bool contains(const std::string &text, const std::string &pattern) {
