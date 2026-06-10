@@ -1,6 +1,7 @@
 #include "compiler/riscv/emit/assembly_emitter.h"
 #include "compiler/riscv/emit/operand_emitter.h"
 #include "compiler/riscv/frame/stack_frame.h"
+#include "compiler/riscv/regalloc/register_allocator.h"
 #include "tests/test_framework.h"
 
 #include <map>
@@ -21,7 +22,8 @@ TEST_CASE(operand_emitter_loads_values_and_stores_through_pointers) {
       "  ret 0",
   };
 
-  riscv::StackFrame frame(function, {});
+  riscv::StackFrame frame(function, {},
+                          riscv::RegisterAllocator().allocate(function));
   std::ostringstream output;
   riscv::AssemblyEmitter asm_output(output);
   riscv::OperandEmitter operands(frame, asm_output);

@@ -6,9 +6,10 @@
 namespace compiler::riscv {
 
 FunctionEmitter::FunctionEmitter(
-    Function function, std::map<std::string, std::vector<int>> global_dimensions)
+    Function function, std::map<std::string, std::vector<int>> global_dimensions,
+    RegisterAllocation registers)
     : function_(std::move(function)),
-      frame_(function_, std::move(global_dimensions)) {}
+      frame_(function_, std::move(global_dimensions), std::move(registers)) {}
 
 void FunctionEmitter::emit(std::ostream &output) {
   AssemblyEmitter asm_output(output);

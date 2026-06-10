@@ -14,7 +14,8 @@ namespace compiler::riscv {
 class StackFrame {
 public:
   StackFrame(const Function &function,
-             std::map<std::string, std::vector<int>> global_dimensions);
+             std::map<std::string, std::vector<int>> global_dimensions,
+             RegisterAllocation registers);
 
   int frameSize() const;
   int raOffset() const;

@@ -5,6 +5,7 @@
 #include "compiler/riscv/emit/operand_emitter.h"
 #include "compiler/riscv/frame/stack_frame.h"
 #include "compiler/riscv/model/koopa_program.h"
+#include "compiler/riscv/regalloc/register_allocation.h"
 
 #include <iosfwd>
 #include <map>
@@ -16,7 +17,8 @@ namespace compiler::riscv {
 class FunctionEmitter {
 public:
   FunctionEmitter(Function function,
-                  std::map<std::string, std::vector<int>> global_dimensions);
+                  std::map<std::string, std::vector<int>> global_dimensions,
+                  RegisterAllocation registers);
 
   void emit(std::ostream &output);
 

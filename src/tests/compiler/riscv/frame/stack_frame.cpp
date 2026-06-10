@@ -1,4 +1,5 @@
 #include "compiler/riscv/frame/stack_frame.h"
+#include "compiler/riscv/regalloc/register_allocator.h"
 #include "tests/test_framework.h"
 
 #include <map>
@@ -23,7 +24,8 @@ TEST_CASE(stack_frame_tracks_offsets_calls_and_pointer_dimensions) {
   std::map<std::string, std::vector<int>> globals;
   globals["glob"] = {3};
 
-  riscv::StackFrame frame(function, globals);
+  riscv::StackFrame frame(function, globals,
+                          riscv::RegisterAllocator().allocate(function));
 
   EXPECT_TRUE(frame.frameSize() >= 16);
   EXPECT_TRUE(frame.hasCall());
@@ -55,7 +57,8 @@ TEST_CASE(stack_frame_keeps_colored_temporaries_out_of_stack_slots) {
       "  ret %1",
   };
 
-  riscv::StackFrame frame(function, {});
+  riscv::StackFrame frame(function, {},
+                          riscv::RegisterAllocator().allocate(function));
 
   EXPECT_TRUE(frame.hasRegisterValue("%0"));
   EXPECT_TRUE(frame.hasRegisterValue("%1"));

@@ -4,6 +4,7 @@
 #include "compiler/riscv/emit/function_emitter.h"
 #include "compiler/riscv/model/koopa_program.h"
 #include "compiler/riscv/opt/peephole_optimizer.h"
+#include "compiler/riscv/regalloc/program_register_allocator.h"
 
 #include <map>
 #include <ostream>
@@ -57,13 +58,17 @@ RiscvGenerator::generateOptimized(const std::string &koopa_ir) const {
 void RiscvGenerator::generate(const std::string &koopa_ir,
                               std::ostream &output) const {
   Program program = parseProgram(koopa_ir);
+  ProgramRegisterAllocation registers =
+      ProgramRegisterAllocator().allocate(program);
 
   emitGlobals(program.globals, output);
 
   std::map<std::string, std::vector<int>> global_dimensions =
       buildGlobalDimensions(program.globals);
   for (Function &function : program.functions) {
-    FunctionEmitter emitter(std::move(function), global_dimensions);
+    std::string function_name = function.name;
+    FunctionEmitter emitter(std::move(function), global_dimensions,
+                            registers.allocationFor(function_name));
     emitter.emit(output);
   }
 }

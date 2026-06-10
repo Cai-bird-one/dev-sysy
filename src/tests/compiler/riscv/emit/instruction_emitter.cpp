@@ -1,6 +1,7 @@
 #include "compiler/riscv/emit/assembly_emitter.h"
 #include "compiler/riscv/emit/instruction_emitter.h"
 #include "compiler/riscv/frame/stack_frame.h"
+#include "compiler/riscv/regalloc/register_allocator.h"
 #include "tests/test_framework.h"
 
 #include <sstream>
@@ -19,7 +20,8 @@ TEST_CASE(instruction_emitter_emits_labels_branches_calls_and_binary_ops) {
       "  ret %1",
   };
 
-  riscv::StackFrame frame(function, {});
+  riscv::StackFrame frame(function, {},
+                          riscv::RegisterAllocator().allocate(function));
   std::ostringstream output;
   riscv::AssemblyEmitter asm_output(output);
   riscv::InstructionEmitter instructions(function.name, frame, asm_output);
@@ -47,7 +49,8 @@ TEST_CASE(instruction_emitter_uses_colored_registers_for_temporaries) {
       "  ret %1",
   };
 
-  riscv::StackFrame frame(function, {});
+  riscv::StackFrame frame(function, {},
+                          riscv::RegisterAllocator().allocate(function));
   std::ostringstream output;
   riscv::AssemblyEmitter asm_output(output);
   riscv::InstructionEmitter instructions(function.name, frame, asm_output);

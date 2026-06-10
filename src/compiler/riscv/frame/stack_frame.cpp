@@ -1,7 +1,6 @@
 #include "compiler/riscv/frame/stack_frame.h"
 
 #include "compiler/riscv/riscv_generator.h"
-#include "compiler/riscv/regalloc/register_allocator.h"
 #include "compiler/riscv/util/riscv_utils.h"
 
 #include <utility>
@@ -10,9 +9,10 @@ namespace compiler::riscv {
 
 StackFrame::StackFrame(
     const Function &function,
-    std::map<std::string, std::vector<int>> global_dimensions)
+    std::map<std::string, std::vector<int>> global_dimensions,
+    RegisterAllocation registers)
     : function_(function), global_dimensions_(std::move(global_dimensions)),
-      registers_(RegisterAllocator().allocate(function)) {
+      registers_(std::move(registers)) {
   assignStackSlots();
 }
 
