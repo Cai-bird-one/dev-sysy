@@ -1,6 +1,7 @@
 #include "compiler/riscv/frame/stack_frame.h"
 
 #include "compiler/riscv/riscv_generator.h"
+#include "compiler/riscv/regalloc/register_allocator.h"
 #include "compiler/riscv/util/riscv_utils.h"
 
 #include <utility>
@@ -10,7 +11,8 @@ namespace compiler::riscv {
 StackFrame::StackFrame(
     const Function &function,
     std::map<std::string, std::vector<int>> global_dimensions)
-    : function_(function), global_dimensions_(std::move(global_dimensions)) {
+    : function_(function), global_dimensions_(std::move(global_dimensions)),
+      registers_(RegisterAllocator().allocate(function)) {
   assignStackSlots();
 }
 
@@ -34,6 +36,14 @@ int StackFrame::offsetOf(const std::string &value) const {
 
 int StackFrame::stackSizeOf(const std::string &value) const {
   return localStackSizeOf(value);
+}
+
+bool StackFrame::hasRegisterValue(const std::string &value) const {
+  return registers_.hasRegister(value);
+}
+
+const std::string &StackFrame::registerFor(const std::string &value) const {
+  return registers_.registerFor(value);
 }
 
 bool StackFrame::isPointer(const std::string &value) const {
@@ -76,9 +86,9 @@ void StackFrame::assignStackSlots() {
   for (const std::string &line : function_.instructions) {
     std::vector<std::string> parts = splitWhitespace(line);
     if (parts.size() >= 3 && parts[1] == "=") {
-      stack_values.insert(parts[0]);
       stack_sizes_[parts[0]] = 4;
       if (parts[2] == "alloc") {
+        stack_values.insert(parts[0]);
         size_t type_begin = line.find("alloc ");
         std::string type = trim(line.substr(type_begin + 6));
         std::vector<int> dimensions = parseTypeDimensions(type);
@@ -88,6 +98,7 @@ void StackFrame::assignStackSlots() {
           aggregate_allocs_.insert(parts[0]);
         }
       } else if (parts[2] == "getelemptr") {
+        stack_values.insert(parts[0]);
         std::vector<int> base_dims = dimensionsForPointer(parts[3]);
         if (!base_dims.empty()) {
           pointer_dimensions_[parts[0]] =
@@ -96,7 +107,10 @@ void StackFrame::assignStackSlots() {
           pointer_dimensions_[parts[0]] = {};
         }
       } else if (parts[2] == "getptr") {
+        stack_values.insert(parts[0]);
         pointer_dimensions_[parts[0]] = dimensionsForPointer(parts[3]);
+      } else if (!hasRegisterValue(parts[0])) {
+        stack_values.insert(parts[0]);
       }
     }
     if (line.find("call @") != std::string::npos) {

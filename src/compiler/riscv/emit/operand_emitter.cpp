@@ -31,6 +31,13 @@ void OperandEmitter::loadOperand(const std::string &operand,
     output_.loadImmediate(reg, operand);
     return;
   }
+  if (frame_.hasRegisterValue(operand)) {
+    const std::string &allocated = frame_.registerFor(operand);
+    if (allocated != reg) {
+      output_.instruction("mv " + reg + ", " + allocated);
+    }
+    return;
+  }
   if (frame_.hasStackValue(operand)) {
     output_.loadWord(reg, frame_.offsetOf(operand));
     return;
@@ -79,6 +86,13 @@ void OperandEmitter::storeToPointer(const std::string &reg,
 
 void OperandEmitter::storeValue(const std::string &reg,
                                 const std::string &value) {
+  if (frame_.hasRegisterValue(value)) {
+    const std::string &allocated = frame_.registerFor(value);
+    if (allocated != reg) {
+      output_.instruction("mv " + allocated + ", " + reg);
+    }
+    return;
+  }
   output_.storeWord(reg, frame_.offsetOf(value));
 }
 

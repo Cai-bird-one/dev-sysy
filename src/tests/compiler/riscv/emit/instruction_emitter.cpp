@@ -36,3 +36,28 @@ TEST_CASE(instruction_emitter_emits_labels_branches_calls_and_binary_ops) {
   EXPECT_TRUE(riscv.find("  call callee\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  ret\n") != std::string::npos);
 }
+
+TEST_CASE(instruction_emitter_uses_colored_registers_for_temporaries) {
+  riscv::Function function;
+  function.name = "main";
+  function.instructions = {
+      "%entry:",
+      "  %0 = add 1, 2",
+      "  %1 = mul %0, 3",
+      "  ret %1",
+  };
+
+  riscv::StackFrame frame(function, {});
+  std::ostringstream output;
+  riscv::AssemblyEmitter asm_output(output);
+  riscv::InstructionEmitter instructions(function.name, frame, asm_output);
+
+  for (const std::string &line : function.instructions) {
+    instructions.emitInstruction(line);
+  }
+
+  std::string riscv = output.str();
+  EXPECT_TRUE(riscv.find("  mv ") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  sw t0, ") == std::string::npos);
+  EXPECT_TRUE(riscv.find("  lw t0, ") == std::string::npos);
+}

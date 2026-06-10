@@ -1,6 +1,7 @@
 #pragma once
 
 #include "compiler/riscv/model/koopa_program.h"
+#include "compiler/riscv/regalloc/register_allocation.h"
 
 #include <cstddef>
 #include <map>
@@ -22,6 +23,8 @@ public:
   bool hasStackValue(const std::string &value) const;
   int offsetOf(const std::string &value) const;
   int stackSizeOf(const std::string &value) const;
+  bool hasRegisterValue(const std::string &value) const;
+  const std::string &registerFor(const std::string &value) const;
 
   bool isPointer(const std::string &value) const;
   bool isAggregateAlloc(const std::string &value) const;
@@ -33,6 +36,7 @@ private:
 
   const Function &function_;
   std::map<std::string, std::vector<int>> global_dimensions_;
+  RegisterAllocation registers_;
   std::map<std::string, int> stack_offsets_;
   std::map<std::string, int> stack_sizes_;
   std::map<std::string, std::vector<int>> pointer_dimensions_;

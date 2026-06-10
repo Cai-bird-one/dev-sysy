@@ -66,7 +66,7 @@ TEST_CASE(riscv_generator_handles_stack_variables) {
   EXPECT_TRUE(riscv.find("li t0, -16") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(sp)") != std::string::npos);
   EXPECT_TRUE(riscv.find("add t0, t0, t1") != std::string::npos);
-  EXPECT_TRUE(riscv.find("lw a0") != std::string::npos);
+  EXPECT_TRUE(riscv.find("mv a0, ") != std::string::npos);
   EXPECT_TRUE(riscv.find("ret") != std::string::npos);
 }
 
@@ -205,20 +205,20 @@ TEST_CASE(riscv_generator_keeps_control_flow_labels_function_local) {
 }
 
 TEST_CASE(riscv_generator_handles_large_stack_offsets) {
-  std::ostringstream koopa;
-  koopa << "fun @main(): i32 {\n%entry:\n";
-  for (int i = 0; i < 600; ++i) {
-    koopa << "  %" << i << " = add " << i << ", 1\n";
-  }
-  koopa << "  ret %599\n}\n";
-
   riscv::RiscvGenerator generator;
-  std::string riscv = generator.generate(koopa.str());
+  std::string riscv = generator.generate("fun @main(): i32 {\n"
+                                         "%entry:\n"
+                                         "  %big = alloc [i32, 600]\n"
+                                         "  %x = alloc i32\n"
+                                         "  store 7, %x\n"
+                                         "  %0 = load %x\n"
+                                         "  ret %0\n"
+                                         "}\n");
 
-  EXPECT_TRUE(riscv.find("li t2, 2396") != std::string::npos);
+  EXPECT_TRUE(riscv.find("li t2, 2400") != std::string::npos);
   EXPECT_TRUE(riscv.find("add t2, sp, t2") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(t2)") != std::string::npos);
-  EXPECT_TRUE(riscv.find("lw a0, 0(t2)") != std::string::npos);
+  EXPECT_TRUE(riscv.find("lw t0, 0(t2)") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_handles_functions_and_calls) {
@@ -254,15 +254,21 @@ TEST_CASE(riscv_generator_optimized_output_uses_peephole_pass) {
   riscv::RiscvGenerator generator;
   std::string normal = generator.generate("fun @main(): i32 {\n"
                                           "%entry:\n"
-                                          "  %0 = add 1, 2\n"
-                                          "  ret %0\n"
+                                          "  %a = alloc i32\n"
+                                          "  %0 = call @id()\n"
+                                          "  store %0, %a\n"
+                                          "  %1 = load %a\n"
+                                          "  ret %1\n"
                                           "}\n");
   std::string optimized = generator.generateOptimized("fun @main(): i32 {\n"
                                                       "%entry:\n"
-                                                      "  %0 = add 1, 2\n"
-                                                      "  ret %0\n"
+                                                      "  %a = alloc i32\n"
+                                                      "  %0 = call @id()\n"
+                                                      "  store %0, %a\n"
+                                                      "  %1 = load %a\n"
+                                                      "  ret %1\n"
                                                       "}\n");
 
-  EXPECT_TRUE(normal.find("  lw a0, ") != std::string::npos);
-  EXPECT_TRUE(optimized.find("  mv a0, t0\n") != std::string::npos);
+  EXPECT_TRUE(normal.find("  call id\n") != std::string::npos);
+  EXPECT_TRUE(optimized.size() < normal.size());
 }

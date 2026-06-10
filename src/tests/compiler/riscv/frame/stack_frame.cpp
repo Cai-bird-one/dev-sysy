@@ -44,3 +44,21 @@ TEST_CASE(stack_frame_tracks_offsets_calls_and_pointer_dimensions) {
   EXPECT_EQ(global_dims.size(), 1u);
   EXPECT_EQ(global_dims[0], 3);
 }
+
+TEST_CASE(stack_frame_keeps_colored_temporaries_out_of_stack_slots) {
+  riscv::Function function;
+  function.name = "main";
+  function.instructions = {
+      "%entry:",
+      "  %0 = add 1, 2",
+      "  %1 = mul %0, 3",
+      "  ret %1",
+  };
+
+  riscv::StackFrame frame(function, {});
+
+  EXPECT_TRUE(frame.hasRegisterValue("%0"));
+  EXPECT_TRUE(frame.hasRegisterValue("%1"));
+  EXPECT_TRUE(!frame.hasStackValue("%0"));
+  EXPECT_TRUE(!frame.hasStackValue("%1"));
+}
