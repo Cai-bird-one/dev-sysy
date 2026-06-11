@@ -20,6 +20,7 @@ TEST_CASE(assembly_emitter_formats_sections_labels_and_large_stack_offsets) {
   emitter.storeWord("a0", 3004);
   emitter.loadStackAddress(3008, "t0");
   emitter.adjustStack(-32);
+  emitter.adjustStack(-4096);
 
   std::string riscv = output.str();
   EXPECT_TRUE(riscv.find("  .data\n") != std::string::npos);
@@ -30,5 +31,7 @@ TEST_CASE(assembly_emitter_formats_sections_labels_and_large_stack_offsets) {
   EXPECT_TRUE(riscv.find("  lw a0, 0(t2)\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  sw a0, 0(t2)\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  add t0, sp, t0\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  addi sp, sp, -32\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  li t0, -4096\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  add sp, sp, t0\n") != std::string::npos);
 }

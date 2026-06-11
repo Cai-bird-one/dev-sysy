@@ -8,6 +8,41 @@
 #include <vector>
 
 namespace compiler::riscv {
+namespace {
+
+bool parseImmediate12(const std::string &text, int &value) {
+  if (!isIntegerLiteral(text)) {
+    return false;
+  }
+  try {
+    value = std::stoi(text);
+  } catch (...) {
+    return false;
+  }
+  return value >= -2048 && value <= 2047;
+}
+
+bool negatedImmediateFits12(int value, int &negated) {
+  if (value == -2048) {
+    return false;
+  }
+  negated = -value;
+  return negated >= -2048 && negated <= 2047;
+}
+
+bool powerOfTwoShift(int value, int &shift) {
+  if (value <= 0 || (value & (value - 1)) != 0) {
+    return false;
+  }
+  shift = 0;
+  while (value > 1) {
+    value >>= 1;
+    ++shift;
+  }
+  return true;
+}
+
+} // namespace
 
 InstructionEmitter::InstructionEmitter(std::string function_name,
                                        const StackFrame &frame,
@@ -80,7 +115,7 @@ void InstructionEmitter::emitInstruction(const std::string &line,
     return;
   }
 
-  if (parts.size() >= 3 && parts[1] == "=") {
+    if (parts.size() >= 3 && parts[1] == "=") {
     const std::string &result = parts[0];
     const std::string &op = parts[2];
     if (op == "alloc") {
@@ -112,9 +147,7 @@ void InstructionEmitter::emitInstruction(const std::string &line,
       return;
     }
     if (parts.size() == 5) {
-      operands.loadOperand(parts[3], "t0");
-      operands.loadOperand(parts[4], "t1");
-      emitBinary(op);
+      emitBinary(op, parts[3], parts[4]);
       operands.storeValue("t0", result);
       return;
     }
@@ -123,11 +156,47 @@ void InstructionEmitter::emitInstruction(const std::string &line,
   throw RiscvError("unsupported Koopa instruction: " + line);
 }
 
-void InstructionEmitter::emitBinary(const std::string &op) {
+void InstructionEmitter::emitBinary(const std::string &op,
+                                    const std::string &left,
+                                    const std::string &right) {
+  OperandEmitter operands(frame_, output_);
   if (isComparison(op)) {
+    operands.loadOperand(left, "t0");
+    operands.loadOperand(right, "t1");
     emitComparison(op);
     return;
   }
+  int immediate = 0;
+  if (op == "add" && parseImmediate12(right, immediate)) {
+    operands.loadOperand(left, "t0");
+    output_.instruction("addi t0, t0, " + std::to_string(immediate));
+    return;
+  }
+  if (op == "add" && parseImmediate12(left, immediate)) {
+    operands.loadOperand(right, "t0");
+    output_.instruction("addi t0, t0, " + std::to_string(immediate));
+    return;
+  }
+  if (op == "sub" && parseImmediate12(right, immediate)) {
+    int negated = 0;
+    if (negatedImmediateFits12(immediate, negated)) {
+      operands.loadOperand(left, "t0");
+      output_.instruction("addi t0, t0, " + std::to_string(negated));
+      return;
+    }
+  }
+  if ((op == "and" || op == "or") && parseImmediate12(right, immediate)) {
+    operands.loadOperand(left, "t0");
+    output_.instruction(op + "i t0, t0, " + std::to_string(immediate));
+    return;
+  }
+  if ((op == "and" || op == "or") && parseImmediate12(left, immediate)) {
+    operands.loadOperand(right, "t0");
+    output_.instruction(op + "i t0, t0, " + std::to_string(immediate));
+    return;
+  }
+  operands.loadOperand(left, "t0");
+  operands.loadOperand(right, "t1");
   output_.instruction(koopaBinaryToRiscv(op) + " t0, t0, t1");
 }
 
@@ -211,8 +280,13 @@ void InstructionEmitter::emitGetElementPtr(const std::string &result,
   } else if (dimensions.size() > 1) {
     stride = elementCount(dimensions, 1) * 4;
   }
-  output_.loadImmediate("t2", stride);
-  output_.instruction("mul t1, t1, t2");
+  int shift = 0;
+  if (powerOfTwoShift(stride, shift)) {
+    output_.instruction("slli t1, t1, " + std::to_string(shift));
+  } else {
+    output_.loadImmediate("t2", stride);
+    output_.instruction("mul t1, t1, t2");
+  }
   output_.instruction("add t0, t0, t1");
   operands.storeValue("t0", result);
 }

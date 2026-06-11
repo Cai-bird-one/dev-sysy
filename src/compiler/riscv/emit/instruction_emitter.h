@@ -18,7 +18,8 @@ public:
   void emitInstruction(const std::string &line, size_t instruction_index);
 
 private:
-  void emitBinary(const std::string &op);
+  void emitBinary(const std::string &op, const std::string &left,
+                  const std::string &right);
   void emitCall(const CallInstruction &call, size_t instruction_index);
   void emitComparison(const std::string &op);
   void emitGetElementPtr(const std::string &result, const std::string &base,

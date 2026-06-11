@@ -75,6 +75,10 @@ void AssemblyEmitter::adjustStack(int amount) {
   if (amount == 0) {
     return;
   }
+  if (fitsSigned12Bit(amount)) {
+    output_ << "  addi sp, sp, " << amount << "\n";
+    return;
+  }
   loadImmediate("t0", amount);
   output_ << "  add sp, sp, t0\n";
 }

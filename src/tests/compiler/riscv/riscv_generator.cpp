@@ -63,9 +63,9 @@ TEST_CASE(riscv_generator_handles_stack_variables) {
                                          "  ret %2\n"
                                          "}\n");
 
-  EXPECT_TRUE(riscv.find("li t0, -16") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi sp, sp, -16") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(sp)") != std::string::npos);
-  EXPECT_TRUE(riscv.find("add t0, t0, t1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi t0, t0, 2") != std::string::npos);
   EXPECT_TRUE(riscv.find("mv a0, ") != std::string::npos);
   EXPECT_TRUE(riscv.find("ret") != std::string::npos);
 }
@@ -107,7 +107,7 @@ TEST_CASE(riscv_generator_handles_arrays_and_getelemptr) {
   EXPECT_TRUE(riscv.find("a:\n  .word 1\n  .word 2\n  .word 0\n  .word 3") !=
               std::string::npos);
   EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
-  EXPECT_TRUE(riscv.find("li t2, 4") != std::string::npos);
+  EXPECT_TRUE(riscv.find("slli t1, t1, 2") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(t1)") != std::string::npos);
 }
 
@@ -143,7 +143,7 @@ TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
   EXPECT_TRUE(riscv.find("sw a0") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw a1") != std::string::npos);
   EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
-  EXPECT_TRUE(riscv.find("li t2, 4") != std::string::npos);
+  EXPECT_TRUE(riscv.find("slli t1, t1, 2") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_handles_comparisons) {
