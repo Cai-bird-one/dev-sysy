@@ -22,15 +22,19 @@ private:
   };
 
   std::set<std::string> collectAllocatableValues(const Function &function) const;
+  std::set<std::string> collectRegisterParamValues(
+      const Function &function) const;
   std::vector<InstructionInfo>
   analyzeInstructions(const Function &function,
                       const std::set<std::string> &allocatable) const;
   std::map<std::string, std::set<std::string>>
   buildInterferenceGraph(const std::set<std::string> &allocatable,
                          const std::vector<InstructionInfo> &instructions,
+                         std::vector<std::set<std::string>> &live_in,
                          std::vector<std::set<std::string>> &live_out) const;
-  RegisterAllocation colorGraph(
-      const std::map<std::string, std::set<std::string>> &graph) const;
+  RegisterAllocation
+  colorGraph(const std::map<std::string, std::set<std::string>> &graph,
+             const std::set<std::string> &register_params) const;
   void recordCallSavedValues(const Function &function,
                              const std::vector<std::set<std::string>> &live_out,
                              RegisterAllocation &allocation) const;

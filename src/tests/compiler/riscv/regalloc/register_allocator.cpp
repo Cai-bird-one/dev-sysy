@@ -43,6 +43,26 @@ TEST_CASE(register_allocator_saves_values_live_across_calls) {
               allocation.callSavedValues(2).end());
 }
 
+TEST_CASE(register_allocator_colors_scalar_parameters) {
+  riscv::Function function;
+  function.name = "add";
+  function.params = {"@a", "@b"};
+  function.param_types = {"i32", "i32"};
+  function.instructions = {
+      "%entry:",
+      "  %0 = add @a, @b",
+      "  ret %0",
+  };
+
+  riscv::RegisterAllocation allocation =
+      riscv::RegisterAllocator().allocate(function);
+
+  EXPECT_TRUE(allocation.hasRegister("@a"));
+  EXPECT_TRUE(allocation.hasRegister("@b"));
+  EXPECT_TRUE(allocation.registerFor("@a").rfind("t", 0) == 0);
+  EXPECT_TRUE(allocation.registerFor("@b").rfind("t", 0) == 0);
+}
+
 TEST_CASE(program_register_allocator_allocates_all_functions) {
   riscv::Program program;
   riscv::Function first;

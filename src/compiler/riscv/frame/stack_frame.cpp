@@ -78,8 +78,10 @@ StackFrame::dimensionsForPointer(const std::string &pointer) const {
 void StackFrame::assignStackSlots() {
   std::set<std::string> stack_values;
   for (const std::string &param : function_.params) {
-    stack_values.insert(param);
     stack_sizes_[param] = 4;
+    if (!hasRegisterValue(param) || registers_.needsCallSaveSlot(param)) {
+      stack_values.insert(param);
+    }
   }
   for (size_t i = 0; i < function_.params.size(); ++i) {
     if (i < function_.param_types.size() &&

@@ -243,11 +243,25 @@ TEST_CASE(riscv_generator_handles_functions_and_calls) {
       "}\n");
 
   EXPECT_TRUE(riscv.find("add:\n") != std::string::npos);
-  EXPECT_TRUE(riscv.find("sw a0") != std::string::npos);
-  EXPECT_TRUE(riscv.find("sw a1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("mv t") != std::string::npos);
   EXPECT_TRUE(riscv.find("main:\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("call add") != std::string::npos);
   EXPECT_TRUE(riscv.find("lw ra") != std::string::npos);
+}
+
+TEST_CASE(riscv_generator_keeps_scalar_parameters_in_registers) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(
+      "fun @add(@a: i32, @b: i32): i32 {\n"
+      "%entry:\n"
+      "  %0 = add @a, @b\n"
+      "  ret %0\n"
+      "}\n");
+
+  EXPECT_TRUE(riscv.find("  mv t") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  sw a0") == std::string::npos);
+  EXPECT_TRUE(riscv.find("  sw a1") == std::string::npos);
+  EXPECT_TRUE(riscv.find("  lw t0") == std::string::npos);
 }
 
 TEST_CASE(riscv_generator_saves_register_values_live_across_calls) {

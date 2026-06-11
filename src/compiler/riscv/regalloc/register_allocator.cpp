@@ -12,9 +12,20 @@ namespace {
 
 const std::vector<std::string> kAllocatableRegisters = {
     "t3", "t4", "t5", "t6", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
+const std::vector<std::string> kParameterRegisters = {"t3", "t4", "t5", "t6"};
 
 bool isKoopaValue(const std::string &text) {
   return !text.empty() && text[0] == '%';
+}
+
+bool isScalarRegisterParam(const Function &function, size_t index) {
+  if (index >= 8) {
+    return false;
+  }
+  if (index >= function.param_types.size()) {
+    return true;
+  }
+  return function.param_types[index] == "i32";
 }
 
 void addUse(std::set<std::string> &uses, const std::set<std::string> &allowed,
@@ -52,11 +63,15 @@ std::set<std::string> withoutDefs(std::set<std::string> values,
 
 RegisterAllocation RegisterAllocator::allocate(const Function &function) const {
   std::set<std::string> allocatable = collectAllocatableValues(function);
+  std::set<std::string> register_params = collectRegisterParamValues(function);
   std::vector<InstructionInfo> instructions =
       analyzeInstructions(function, allocatable);
+  std::vector<std::set<std::string>> live_in;
   std::vector<std::set<std::string>> live_out;
   RegisterAllocation allocation =
-      colorGraph(buildInterferenceGraph(allocatable, instructions, live_out));
+      colorGraph(buildInterferenceGraph(allocatable, instructions, live_in,
+                                        live_out),
+                 register_params);
   recordCallSavedValues(function, live_out, allocation);
   return allocation;
 }
@@ -64,6 +79,11 @@ RegisterAllocation RegisterAllocator::allocate(const Function &function) const {
 std::set<std::string>
 RegisterAllocator::collectAllocatableValues(const Function &function) const {
   std::set<std::string> values;
+  for (size_t i = 0; i < function.params.size(); ++i) {
+    if (isScalarRegisterParam(function, i)) {
+      values.insert(function.params[i]);
+    }
+  }
   for (const std::string &line : function.instructions) {
     std::vector<std::string> parts = splitWhitespace(line);
     if (parts.size() < 3 || parts[1] != "=" || !isKoopaValue(parts[0])) {
@@ -74,6 +94,17 @@ RegisterAllocator::collectAllocatableValues(const Function &function) const {
       continue;
     }
     values.insert(parts[0]);
+  }
+  return values;
+}
+
+std::set<std::string>
+RegisterAllocator::collectRegisterParamValues(const Function &function) const {
+  std::set<std::string> values;
+  for (size_t i = 0; i < function.params.size(); ++i) {
+    if (isScalarRegisterParam(function, i)) {
+      values.insert(function.params[i]);
+    }
   }
   return values;
 }
@@ -165,13 +196,14 @@ std::map<std::string, std::set<std::string>>
 RegisterAllocator::buildInterferenceGraph(
     const std::set<std::string> &allocatable,
     const std::vector<InstructionInfo> &instructions,
+    std::vector<std::set<std::string>> &live_in,
     std::vector<std::set<std::string>> &live_out) const {
   std::map<std::string, std::set<std::string>> graph;
   for (const std::string &value : allocatable) {
     graph[value];
   }
 
-  std::vector<std::set<std::string>> live_in(instructions.size());
+  live_in.assign(instructions.size(), {});
   live_out.assign(instructions.size(), {});
   bool changed = true;
   while (changed) {
@@ -197,6 +229,13 @@ RegisterAllocator::buildInterferenceGraph(
     for (const std::string &def : instructions[i].defs) {
       for (const std::string &live : live_out[i]) {
         addEdge(graph, def, live);
+      }
+    }
+  }
+  if (!live_in.empty()) {
+    for (const std::string &left : live_in.front()) {
+      for (const std::string &right : live_in.front()) {
+        addEdge(graph, left, right);
       }
     }
   }
@@ -226,7 +265,8 @@ void RegisterAllocator::recordCallSavedValues(
 }
 
 RegisterAllocation RegisterAllocator::colorGraph(
-    const std::map<std::string, std::set<std::string>> &graph) const {
+    const std::map<std::string, std::set<std::string>> &graph,
+    const std::set<std::string> &register_params) const {
   RegisterAllocation allocation;
   std::vector<std::pair<std::string, size_t>> order;
   for (const auto &[value, neighbors] : graph) {
@@ -253,7 +293,11 @@ RegisterAllocation RegisterAllocator::colorGraph(
       }
     }
 
-    for (const std::string &reg : kAllocatableRegisters) {
+    const std::vector<std::string> &available_registers =
+        register_params.find(value) == register_params.end()
+            ? kAllocatableRegisters
+            : kParameterRegisters;
+    for (const std::string &reg : available_registers) {
       if (unavailable.find(reg) == unavailable.end()) {
         assigned[value] = reg;
         allocation.assign(value, reg);
