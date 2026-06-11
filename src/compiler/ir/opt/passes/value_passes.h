@@ -44,4 +44,9 @@ public:
   PassResult run(IrFunction &function) override;
 };
 
+class LocalDeadStoreEliminationPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
 } // namespace compiler::ir::opt

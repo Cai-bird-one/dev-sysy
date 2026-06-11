@@ -111,6 +111,45 @@ TEST_CASE(ir_optimizer_forwards_local_scalar_loads) {
   EXPECT_TRUE(optimized.find("%1 = add @x, 1") != std::string::npos);
 }
 
+TEST_CASE(ir_optimizer_removes_dead_local_scalar_stores) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(@x: i32, @y: i32): i32 {\n"
+                         "%entry:\n"
+                         "  %a = alloc i32\n"
+                         "  store @x, %a\n"
+                         "  store @y, %a\n"
+                         "  %0 = load %a\n"
+                         "  ret %0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("store @x, %a") == std::string::npos);
+  EXPECT_TRUE(optimized.find("store @y, %a") == std::string::npos);
+  EXPECT_TRUE(optimized.find("ret @y") != std::string::npos);
+}
+
+TEST_CASE(ir_optimizer_keeps_local_stores_across_calls_and_jumps) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @touch(): i32 {\n"
+                         "%entry:\n"
+                         "  ret 0\n"
+                         "}\n"
+                         "\n"
+                         "fun @main(@x: i32): i32 {\n"
+                         "%entry:\n"
+                         "  %a = alloc i32\n"
+                         "  store @x, %a\n"
+                         "  call @touch()\n"
+                         "  jump %next\n"
+                         "%next:\n"
+                         "  %0 = load %a\n"
+                         "  ret %0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("store @x, %a") != std::string::npos);
+}
+
 TEST_CASE(ir_optimizer_output_still_feeds_riscv_generator) {
   ir::opt::IrOptimizer optimizer;
   std::string optimized =
