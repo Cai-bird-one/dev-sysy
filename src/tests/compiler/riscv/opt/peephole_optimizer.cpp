@@ -88,7 +88,7 @@ TEST_CASE(peephole_optimizer_removes_jump_to_next_label) {
                        "  ret\n");
 }
 
-TEST_CASE(peephole_optimizer_reuses_immediates_and_addresses) {
+TEST_CASE(peephole_optimizer_keeps_independent_immediates_and_addresses) {
   riscv::PeepholeOptimizer optimizer;
   std::string optimized =
       optimizer.optimize("  li t0, 42\n"
@@ -97,19 +97,9 @@ TEST_CASE(peephole_optimizer_reuses_immediates_and_addresses) {
                          "  la a0, glob\n");
 
   EXPECT_EQ(optimized, "  li t0, 42\n"
-                       "  mv t1, t0\n"
+                       "  li t1, 42\n"
                        "  la t0, glob\n"
-                       "  mv a0, t0\n");
-}
-
-TEST_CASE(peephole_optimizer_does_not_reuse_t2_immediates) {
-  riscv::PeepholeOptimizer optimizer;
-  std::string optimized =
-      optimizer.optimize("  li t2, 4\n"
-                         "  li t1, 4\n");
-
-  EXPECT_EQ(optimized, "  li t2, 4\n"
-                       "  li t1, 4\n");
+                       "  la a0, glob\n");
 }
 
 TEST_CASE(peephole_optimizer_simplifies_zero_arithmetic) {

@@ -16,21 +16,10 @@ struct MemoryAccess {
   std::string address;
 };
 
-struct LoadedValue {
-  bool valid = false;
-  std::string opcode;
-  std::string reg;
-  std::string value;
-};
-
 struct OptimizerState {
   std::unordered_map<std::string, std::string> stack_value_regs;
-  std::unordered_map<std::string, std::string> loaded_value_regs;
 
-  void clear() {
-    stack_value_regs.clear();
-    loaded_value_regs.clear();
-  }
+  void clear() { stack_value_regs.clear(); }
 
   void clearStackValues() { stack_value_regs.clear(); }
 
@@ -38,13 +27,6 @@ struct OptimizerState {
     for (auto iter = stack_value_regs.begin(); iter != stack_value_regs.end();) {
       if (iter->second == reg) {
         iter = stack_value_regs.erase(iter);
-      } else {
-        ++iter;
-      }
-    }
-    for (auto iter = loaded_value_regs.begin(); iter != loaded_value_regs.end();) {
-      if (iter->second == reg) {
-        iter = loaded_value_regs.erase(iter);
       } else {
         ++iter;
       }
@@ -111,25 +93,6 @@ MemoryAccess parseMemoryAccess(const std::string &line) {
   access.reg = trim(text.substr(3, comma - 3));
   access.address = trim(text.substr(comma + 1));
   return access;
-}
-
-LoadedValue parseLoadedValue(const std::string &line) {
-  std::string text = trim(line);
-  if (!startsWith(text, "li ") && !startsWith(text, "la ")) {
-    return {};
-  }
-
-  size_t comma = text.find(',');
-  if (comma == std::string::npos) {
-    return {};
-  }
-
-  LoadedValue value;
-  value.valid = true;
-  value.opcode = text.substr(0, 2);
-  value.reg = trim(text.substr(3, comma - 3));
-  value.value = trim(text.substr(comma + 1));
-  return value;
 }
 
 std::vector<std::string> parseOperands(const std::string &line) {
@@ -200,10 +163,6 @@ bool isBoundary(const std::string &line) {
 
 bool isStackAddress(const std::string &address) {
   return address.size() > 4 && address.substr(address.size() - 4) == "(sp)";
-}
-
-bool canReuseLoadedValueRegister(const std::string &reg) {
-  return reg != "t2";
 }
 
 std::string indentLikeInstruction(const std::string &instruction) {
@@ -365,31 +324,6 @@ std::string PeepholeOptimizer::optimize(const std::string &assembly) const {
         output.push_back(std::move(line));
         continue;
       }
-    }
-
-    LoadedValue loaded = parseLoadedValue(line);
-    if (loaded.valid && canReuseLoadedValueRegister(loaded.reg)) {
-      std::string key = loaded.opcode + ":" + loaded.value;
-      auto iter = state.loaded_value_regs.find(key);
-      if (iter != state.loaded_value_regs.end() &&
-          !canReuseLoadedValueRegister(iter->second)) {
-        iter = state.loaded_value_regs.end();
-      }
-      if (iter != state.loaded_value_regs.end()) {
-        if (iter->second == loaded.reg) {
-          continue;
-        }
-        line = indentLikeInstruction("mv " + loaded.reg + ", " + iter->second);
-      }
-      state.invalidateRegister(loaded.reg);
-      state.loaded_value_regs[key] = loaded.reg;
-      output.push_back(std::move(line));
-      continue;
-    }
-    if (loaded.valid) {
-      state.invalidateRegister(loaded.reg);
-      output.push_back(std::move(line));
-      continue;
     }
 
     std::string def = definedRegister(line);
