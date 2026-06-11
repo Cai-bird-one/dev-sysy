@@ -1,5 +1,8 @@
 #pragma once
 
+#include "compiler/ir/opt/model/ir_module.h"
+
+#include <set>
 #include <string>
 #include <vector>
 
@@ -21,6 +24,8 @@ bool isTerminator(const std::string &line);
 bool isSideEffectFree(const Assignment &assignment);
 std::vector<std::string> splitWhitespace(const std::string &text);
 std::vector<std::string> collectValueNames(const std::string &text);
+std::set<std::string>
+collectValuesUsedOutsideDefiningBlock(const IrFunction &function);
 Assignment parseAssignment(const std::string &line);
 std::string formatAssignment(const Assignment &assignment);
 std::string replaceOperands(

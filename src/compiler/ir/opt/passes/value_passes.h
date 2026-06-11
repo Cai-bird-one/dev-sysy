@@ -24,4 +24,24 @@ public:
   PassResult run(IrFunction &function) override;
 };
 
+class BranchSimplifyPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
+class JumpThreadingPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
+class CommonSubexpressionEliminationPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
+class LocalLoadStoreForwardingPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
 } // namespace compiler::ir::opt

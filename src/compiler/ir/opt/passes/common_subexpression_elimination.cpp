@@ -2,12 +2,39 @@
 
 #include "compiler/ir/opt/util/ir_opt_utils.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
-#include <vector>
+#include <utility>
 
 namespace compiler::ir::opt {
 namespace {
+
+bool isPureExpression(const Assignment &assignment) {
+  return assignment.op == "add" || assignment.op == "sub" ||
+         assignment.op == "mul" || assignment.op == "div" ||
+         assignment.op == "mod" || assignment.op == "eq" ||
+         assignment.op == "ne" || assignment.op == "lt" ||
+         assignment.op == "gt" || assignment.op == "le" ||
+         assignment.op == "ge";
+}
+
+bool isCommutative(const std::string &op) {
+  return op == "add" || op == "mul" || op == "eq" || op == "ne";
+}
+
+std::string expressionKey(Assignment assignment) {
+  if (assignment.args.size() == 2 && isCommutative(assignment.op) &&
+      assignment.args[1] < assignment.args[0]) {
+    std::swap(assignment.args[0], assignment.args[1]);
+  }
+
+  std::string key = assignment.op;
+  for (const std::string &arg : assignment.args) {
+    key += "|" + arg;
+  }
+  return key;
+}
 
 std::string resolve(const std::string &operand,
                     const std::map<std::string, std::string> &values) {
@@ -20,42 +47,19 @@ replacements(const std::map<std::string, std::string> &values) {
   return {values.begin(), values.end()};
 }
 
-bool simplify(const Assignment &assignment, std::string &replacement) {
-  if (assignment.args.size() != 2) {
-    return false;
-  }
-  const std::string &lhs = assignment.args[0];
-  const std::string &rhs = assignment.args[1];
-  if ((assignment.op == "add" && rhs == "0") ||
-      (assignment.op == "sub" && rhs == "0") ||
-      (assignment.op == "mul" && rhs == "1") ||
-      (assignment.op == "div" && rhs == "1")) {
-    replacement = lhs;
-    return true;
-  }
-  if ((assignment.op == "add" && lhs == "0") ||
-      (assignment.op == "mul" && lhs == "1")) {
-    replacement = rhs;
-    return true;
-  }
-  if (assignment.op == "mul" && (lhs == "0" || rhs == "0")) {
-    replacement = "0";
-    return true;
-  }
-  return false;
-}
-
 } // namespace
 
-PassResult AlgebraicSimplifyPass::run(IrFunction &function) {
+PassResult CommonSubexpressionEliminationPass::run(IrFunction &function) {
   PassResult result;
   std::set<std::string> used_outside =
       collectValuesUsedOutsideDefiningBlock(function);
+  std::map<std::string, std::string> expressions;
   std::map<std::string, std::string> values;
   std::vector<std::string> optimized;
 
   for (std::string line : function.instructions) {
     if (isLabel(line)) {
+      expressions.clear();
       values.clear();
       optimized.push_back(std::move(line));
       continue;
@@ -70,6 +74,7 @@ PassResult AlgebraicSimplifyPass::run(IrFunction &function) {
     Assignment assignment = parseAssignment(line);
     if (!assignment.valid) {
       if (isTerminator(line)) {
+        expressions.clear();
         values.clear();
       }
       optimized.push_back(std::move(line));
@@ -84,16 +89,19 @@ PassResult AlgebraicSimplifyPass::run(IrFunction &function) {
       }
     }
 
-    std::string replacement;
-    if (simplify(assignment, replacement)) {
-      values[assignment.result] = replacement;
-      if (used_outside.find(assignment.result) == used_outside.end()) {
-        result.changed = true;
-        continue;
+    if (isPureExpression(assignment)) {
+      std::string key = expressionKey(assignment);
+      auto found = expressions.find(key);
+      if (found != expressions.end()) {
+        if (used_outside.find(assignment.result) == used_outside.end()) {
+          values[assignment.result] = found->second;
+          result.changed = true;
+          continue;
+        }
       }
+      expressions[key] = assignment.result;
     }
 
-    values.erase(assignment.result);
     optimized.push_back(formatAssignment(assignment));
   }
 

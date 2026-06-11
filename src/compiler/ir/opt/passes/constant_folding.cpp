@@ -3,6 +3,7 @@
 #include "compiler/ir/opt/util/ir_opt_utils.h"
 
 #include <map>
+#include <set>
 #include <vector>
 
 namespace compiler::ir::opt {
@@ -29,6 +30,8 @@ replacements(const std::map<std::string, std::string> &constants) {
 
 PassResult ConstantFoldingPass::run(IrFunction &function) {
   PassResult result;
+  std::set<std::string> used_outside =
+      collectValuesUsedOutsideDefiningBlock(function);
   std::map<std::string, std::string> constants;
   std::vector<std::string> optimized;
 
@@ -70,8 +73,10 @@ PassResult ConstantFoldingPass::run(IrFunction &function) {
           evaluateBinary(assignment.op, std::stoll(assignment.args[0]),
                          std::stoll(assignment.args[1]));
       constants[assignment.result] = std::to_string(value);
-      result.changed = true;
-      continue;
+      if (used_outside.find(assignment.result) == used_outside.end()) {
+        result.changed = true;
+        continue;
+      }
     }
 
     constants.erase(assignment.result);

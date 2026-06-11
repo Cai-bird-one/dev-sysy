@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 
@@ -88,6 +89,50 @@ std::vector<std::string> collectValueNames(const std::string &text) {
     }
   }
   return names;
+}
+
+std::set<std::string>
+collectValuesUsedOutsideDefiningBlock(const IrFunction &function) {
+  std::map<std::string, int> definition_blocks;
+  std::map<std::string, std::set<int>> use_blocks;
+  int block = 0;
+
+  for (const std::string &line : function.instructions) {
+    if (isLabel(line)) {
+      ++block;
+      continue;
+    }
+
+    Assignment assignment = parseAssignment(line);
+    if (assignment.valid) {
+      definition_blocks[assignment.result] = block;
+      for (const std::string &arg : assignment.args) {
+        if (isValueName(arg)) {
+          use_blocks[arg].insert(block);
+        }
+      }
+      continue;
+    }
+
+    for (const std::string &name : collectValueNames(line)) {
+      use_blocks[name].insert(block);
+    }
+  }
+
+  std::set<std::string> outside;
+  for (const auto &entry : use_blocks) {
+    auto definition = definition_blocks.find(entry.first);
+    if (definition == definition_blocks.end()) {
+      continue;
+    }
+    for (int use_block : entry.second) {
+      if (use_block != definition->second) {
+        outside.insert(entry.first);
+        break;
+      }
+    }
+  }
+  return outside;
 }
 
 Assignment parseAssignment(const std::string &line) {
