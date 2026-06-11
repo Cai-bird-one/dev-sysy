@@ -114,6 +114,30 @@ TEST_CASE(ir_optimizer_propagates_copies_across_blocks) {
   EXPECT_TRUE(optimized.find("ret @x") != std::string::npos);
 }
 
+TEST_CASE(ir_optimizer_removes_unused_functions) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @used(): i32 {\n"
+                         "%entry:\n"
+                         "  ret 7\n"
+                         "}\n"
+                         "\n"
+                         "fun @unused(): i32 {\n"
+                         "%entry:\n"
+                         "  ret 9\n"
+                         "}\n"
+                         "\n"
+                         "fun @main(): i32 {\n"
+                         "%entry:\n"
+                         "  %0 = call @used()\n"
+                         "  ret %0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("fun @used") != std::string::npos);
+  EXPECT_TRUE(optimized.find("fun @unused") == std::string::npos);
+  EXPECT_TRUE(optimized.find("call @used()") != std::string::npos);
+}
+
 TEST_CASE(ir_optimizer_threads_trivial_jumps) {
   ir::opt::IrOptimizer optimizer;
   std::string optimized =

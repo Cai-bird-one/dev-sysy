@@ -4,6 +4,11 @@
 
 namespace compiler::ir::opt {
 
+class UnusedFunctionEliminationPass : public ModulePass {
+public:
+  PassResult run(IrModule &module) override;
+};
+
 class ConstantFoldingPass : public FunctionPass {
 public:
   PassResult run(IrFunction &function) override;
