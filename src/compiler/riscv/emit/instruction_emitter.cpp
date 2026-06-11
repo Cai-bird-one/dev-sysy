@@ -15,7 +15,8 @@ InstructionEmitter::InstructionEmitter(std::string function_name,
     : function_name_(std::move(function_name)), frame_(frame),
       output_(output) {}
 
-void InstructionEmitter::emitInstruction(const std::string &line) {
+void InstructionEmitter::emitInstruction(const std::string &line,
+                                         size_t instruction_index) {
   std::vector<std::string> parts = splitWhitespace(line);
   OperandEmitter operands(frame_, output_);
   if (parts.empty()) {
@@ -75,7 +76,7 @@ void InstructionEmitter::emitInstruction(const std::string &line) {
 
   if (startsWith(line, "call @") ||
       (parts.size() >= 3 && parts[1] == "=" && parts[2] == "call")) {
-    emitCall(parseCallInstruction(line));
+    emitCall(parseCallInstruction(line), instruction_index);
     return;
   }
 
@@ -130,8 +131,12 @@ void InstructionEmitter::emitBinary(const std::string &op) {
   output_.instruction(koopaBinaryToRiscv(op) + " t0, t0, t1");
 }
 
-void InstructionEmitter::emitCall(const CallInstruction &call) {
+void InstructionEmitter::emitCall(const CallInstruction &call,
+                                  size_t instruction_index) {
   OperandEmitter operands(frame_, output_);
+  const std::set<std::string> &saved_values =
+      frame_.callSavedValues(instruction_index);
+  saveCallerSavedValues(saved_values);
   for (size_t i = 0; i < call.args.size(); ++i) {
     if (i < 8) {
       operands.loadOperand(call.args[i], "a" + std::to_string(i));
@@ -141,8 +146,23 @@ void InstructionEmitter::emitCall(const CallInstruction &call) {
     }
   }
   output_.instruction("call " + stripSigil(call.callee));
+  restoreCallerSavedValues(saved_values);
   if (call.has_result) {
     operands.storeValue("a0", call.result);
+  }
+}
+
+void InstructionEmitter::saveCallerSavedValues(
+    const std::set<std::string> &values) {
+  for (const std::string &value : values) {
+    output_.storeWord(frame_.registerFor(value), frame_.offsetOf(value));
+  }
+}
+
+void InstructionEmitter::restoreCallerSavedValues(
+    const std::set<std::string> &values) {
+  for (const std::string &value : values) {
+    output_.loadWord(frame_.registerFor(value), frame_.offsetOf(value));
   }
 }
 

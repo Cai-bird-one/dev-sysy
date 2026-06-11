@@ -26,8 +26,8 @@ TEST_CASE(instruction_emitter_emits_labels_branches_calls_and_binary_ops) {
   riscv::AssemblyEmitter asm_output(output);
   riscv::InstructionEmitter instructions(function.name, frame, asm_output);
 
-  for (const std::string &line : function.instructions) {
-    instructions.emitInstruction(line);
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    instructions.emitInstruction(function.instructions[i], i);
   }
 
   std::string riscv = output.str();
@@ -55,8 +55,8 @@ TEST_CASE(instruction_emitter_uses_colored_registers_for_temporaries) {
   riscv::AssemblyEmitter asm_output(output);
   riscv::InstructionEmitter instructions(function.name, frame, asm_output);
 
-  for (const std::string &line : function.instructions) {
-    instructions.emitInstruction(line);
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    instructions.emitInstruction(function.instructions[i], i);
   }
 
   std::string riscv = output.str();

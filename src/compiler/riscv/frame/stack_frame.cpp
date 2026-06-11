@@ -46,6 +46,11 @@ const std::string &StackFrame::registerFor(const std::string &value) const {
   return registers_.registerFor(value);
 }
 
+const std::set<std::string> &
+StackFrame::callSavedValues(size_t instruction_index) const {
+  return registers_.callSavedValues(instruction_index);
+}
+
 bool StackFrame::isPointer(const std::string &value) const {
   return pointer_dimensions_.find(value) != pointer_dimensions_.end();
 }
@@ -110,6 +115,9 @@ void StackFrame::assignStackSlots() {
         stack_values.insert(parts[0]);
         pointer_dimensions_[parts[0]] = dimensionsForPointer(parts[3]);
       } else if (!hasRegisterValue(parts[0])) {
+        stack_values.insert(parts[0]);
+      }
+      if (registers_.needsCallSaveSlot(parts[0])) {
         stack_values.insert(parts[0]);
       }
     }

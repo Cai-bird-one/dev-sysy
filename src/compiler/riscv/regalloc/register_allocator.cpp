@@ -17,15 +17,6 @@ bool isKoopaValue(const std::string &text) {
   return !text.empty() && text[0] == '%';
 }
 
-bool containsCall(const Function &function) {
-  for (const std::string &line : function.instructions) {
-    if (line.find("call @") != std::string::npos) {
-      return true;
-    }
-  }
-  return false;
-}
-
 void addUse(std::set<std::string> &uses, const std::set<std::string> &allowed,
             const std::string &value) {
   if (allowed.find(value) != allowed.end()) {
@@ -60,14 +51,14 @@ std::set<std::string> withoutDefs(std::set<std::string> values,
 } // namespace
 
 RegisterAllocation RegisterAllocator::allocate(const Function &function) const {
-  if (containsCall(function)) {
-    return {};
-  }
-
   std::set<std::string> allocatable = collectAllocatableValues(function);
   std::vector<InstructionInfo> instructions =
       analyzeInstructions(function, allocatable);
-  return colorGraph(buildInterferenceGraph(allocatable, instructions));
+  std::vector<std::set<std::string>> live_out;
+  RegisterAllocation allocation =
+      colorGraph(buildInterferenceGraph(allocatable, instructions, live_out));
+  recordCallSavedValues(function, live_out, allocation);
+  return allocation;
 }
 
 std::set<std::string>
@@ -173,14 +164,15 @@ RegisterAllocator::analyzeInstructions(
 std::map<std::string, std::set<std::string>>
 RegisterAllocator::buildInterferenceGraph(
     const std::set<std::string> &allocatable,
-    const std::vector<InstructionInfo> &instructions) const {
+    const std::vector<InstructionInfo> &instructions,
+    std::vector<std::set<std::string>> &live_out) const {
   std::map<std::string, std::set<std::string>> graph;
   for (const std::string &value : allocatable) {
     graph[value];
   }
 
   std::vector<std::set<std::string>> live_in(instructions.size());
-  std::vector<std::set<std::string>> live_out(instructions.size());
+  live_out.assign(instructions.size(), {});
   bool changed = true;
   while (changed) {
     changed = false;
@@ -209,6 +201,28 @@ RegisterAllocator::buildInterferenceGraph(
     }
   }
   return graph;
+}
+
+void RegisterAllocator::recordCallSavedValues(
+    const Function &function, const std::vector<std::set<std::string>> &live_out,
+    RegisterAllocation &allocation) const {
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    const std::string &line = function.instructions[i];
+    std::vector<std::string> parts = splitWhitespace(line);
+    if (!(startsWith(line, "call @") ||
+          (parts.size() >= 3 && parts[1] == "=" && parts[2] == "call"))) {
+      continue;
+    }
+    CallInstruction call = parseCallInstruction(line);
+    for (const std::string &value : live_out[i]) {
+      if (call.has_result && value == call.result) {
+        continue;
+      }
+      if (allocation.hasRegister(value)) {
+        allocation.addCallSavedValue(i, value);
+      }
+    }
+  }
 }
 
 RegisterAllocation RegisterAllocator::colorGraph(

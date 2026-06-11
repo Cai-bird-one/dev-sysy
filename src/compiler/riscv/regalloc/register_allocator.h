@@ -27,9 +27,13 @@ private:
                       const std::set<std::string> &allocatable) const;
   std::map<std::string, std::set<std::string>>
   buildInterferenceGraph(const std::set<std::string> &allocatable,
-                         const std::vector<InstructionInfo> &instructions) const;
+                         const std::vector<InstructionInfo> &instructions,
+                         std::vector<std::set<std::string>> &live_out) const;
   RegisterAllocation colorGraph(
       const std::map<std::string, std::set<std::string>> &graph) const;
+  void recordCallSavedValues(const Function &function,
+                             const std::vector<std::set<std::string>> &live_out,
+                             RegisterAllocation &allocation) const;
 };
 
 } // namespace compiler::riscv

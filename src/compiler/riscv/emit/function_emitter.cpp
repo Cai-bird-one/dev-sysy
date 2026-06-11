@@ -34,8 +34,8 @@ void FunctionEmitter::emit(std::ostream &output) {
   }
 
   InstructionEmitter instructions(function_.name, frame_, asm_output);
-  for (const std::string &line : function_.instructions) {
-    instructions.emitInstruction(line);
+  for (size_t i = 0; i < function_.instructions.size(); ++i) {
+    instructions.emitInstruction(function_.instructions[i], i);
   }
 }
 

@@ -250,6 +250,27 @@ TEST_CASE(riscv_generator_handles_functions_and_calls) {
   EXPECT_TRUE(riscv.find("lw ra") != std::string::npos);
 }
 
+TEST_CASE(riscv_generator_saves_register_values_live_across_calls) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(
+      "fun @main(): i32 {\n"
+      "%entry:\n"
+      "  %0 = add 1, 2\n"
+      "  %1 = call @f()\n"
+      "  %2 = add %0, %1\n"
+      "  ret %2\n"
+      "}\n");
+
+  size_t save = riscv.find("  sw ");
+  size_t call = riscv.find("  call f\n");
+  size_t restore = riscv.find("  call f\n  lw ");
+
+  EXPECT_TRUE(save != std::string::npos);
+  EXPECT_TRUE(call != std::string::npos);
+  EXPECT_TRUE(restore != std::string::npos);
+  EXPECT_TRUE(save < call);
+}
+
 TEST_CASE(riscv_generator_optimized_output_uses_peephole_pass) {
   riscv::RiscvGenerator generator;
   std::string normal = generator.generate("fun @main(): i32 {\n"

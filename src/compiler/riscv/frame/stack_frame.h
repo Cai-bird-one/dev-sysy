@@ -26,6 +26,7 @@ public:
   int stackSizeOf(const std::string &value) const;
   bool hasRegisterValue(const std::string &value) const;
   const std::string &registerFor(const std::string &value) const;
+  const std::set<std::string> &callSavedValues(size_t instruction_index) const;
 
   bool isPointer(const std::string &value) const;
   bool isAggregateAlloc(const std::string &value) const;

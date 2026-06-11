@@ -21,21 +21,26 @@ TEST_CASE(register_allocator_colors_non_calling_scalar_temporaries) {
   EXPECT_TRUE(allocation.hasRegister("%1"));
 }
 
-TEST_CASE(register_allocator_skips_functions_with_calls) {
+TEST_CASE(register_allocator_saves_values_live_across_calls) {
   riscv::Function function;
   function.name = "main";
   function.instructions = {
       "%entry:",
       "  %0 = add 1, 2",
-      "  %1 = call @f(%0)",
-      "  ret %1",
+      "  %1 = call @f()",
+      "  %2 = add %0, %1",
+      "  ret %2",
   };
 
   riscv::RegisterAllocation allocation =
       riscv::RegisterAllocator().allocate(function);
 
-  EXPECT_TRUE(!allocation.hasRegister("%0"));
-  EXPECT_TRUE(!allocation.hasRegister("%1"));
+  EXPECT_TRUE(allocation.hasRegister("%0"));
+  EXPECT_TRUE(allocation.hasRegister("%1"));
+  EXPECT_TRUE(allocation.hasRegister("%2"));
+  EXPECT_TRUE(allocation.needsCallSaveSlot("%0"));
+  EXPECT_TRUE(allocation.callSavedValues(2).find("%0") !=
+              allocation.callSavedValues(2).end());
 }
 
 TEST_CASE(program_register_allocator_allocates_all_functions) {
