@@ -82,6 +82,38 @@ TEST_CASE(ir_optimizer_simplifies_constant_branches) {
   EXPECT_TRUE(optimized.find("%else:\n") != std::string::npos);
 }
 
+TEST_CASE(ir_optimizer_propagates_constants_across_blocks) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(): i32 {\n"
+                         "%entry:\n"
+                         "  %0 = add 1, 2\n"
+                         "  jump %next\n"
+                         "%next:\n"
+                         "  %1 = mul %0, 4\n"
+                         "  ret %1\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%0 = add") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%1 = mul") == std::string::npos);
+  EXPECT_TRUE(optimized.find("ret 12") != std::string::npos);
+}
+
+TEST_CASE(ir_optimizer_propagates_copies_across_blocks) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(@x: i32): i32 {\n"
+                         "%entry:\n"
+                         "  %0 = add @x, 0\n"
+                         "  jump %next\n"
+                         "%next:\n"
+                         "  ret %0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%0 = add") == std::string::npos);
+  EXPECT_TRUE(optimized.find("ret @x") != std::string::npos);
+}
+
 TEST_CASE(ir_optimizer_threads_trivial_jumps) {
   ir::opt::IrOptimizer optimizer;
   std::string optimized =

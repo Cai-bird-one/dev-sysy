@@ -14,6 +14,11 @@ public:
   PassResult run(IrFunction &function) override;
 };
 
+class GlobalValuePropagationPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
 class DeadCodeEliminationPass : public FunctionPass {
 public:
   PassResult run(IrFunction &function) override;

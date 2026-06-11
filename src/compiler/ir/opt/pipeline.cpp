@@ -10,6 +10,7 @@ PassManager buildPerfPipeline() {
   PassManager passes;
   passes.addFunctionPass(std::make_unique<ConstantFoldingPass>());
   passes.addFunctionPass(std::make_unique<AlgebraicSimplifyPass>());
+  passes.addFunctionPass(std::make_unique<GlobalValuePropagationPass>());
   passes.addFunctionPass(std::make_unique<LocalLoadStoreForwardingPass>());
   passes.addFunctionPass(std::make_unique<LocalDeadStoreEliminationPass>());
   passes.addFunctionPass(
