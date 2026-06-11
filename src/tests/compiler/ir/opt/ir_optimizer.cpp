@@ -33,7 +33,7 @@ TEST_CASE(ir_optimizer_simplifies_algebraic_identity) {
   EXPECT_TRUE(optimized.find("ret %0") != std::string::npos);
 }
 
-TEST_CASE(ir_optimizer_removes_unreachable_instructions_after_terminator) {
+TEST_CASE(ir_optimizer_removes_unreachable_code_after_terminator) {
   ir::opt::IrOptimizer optimizer;
   std::string optimized =
       optimizer.optimize("fun @main(): i32 {\n"
@@ -45,7 +45,7 @@ TEST_CASE(ir_optimizer_removes_unreachable_instructions_after_terminator) {
                          "}\n");
 
   EXPECT_TRUE(optimized.find("%0 = add") == std::string::npos);
-  EXPECT_TRUE(optimized.find("%next:\n") != std::string::npos);
+  EXPECT_TRUE(optimized.find("%next:\n") == std::string::npos);
 }
 
 TEST_CASE(ir_optimizer_simplifies_constant_branches) {
@@ -61,7 +61,8 @@ TEST_CASE(ir_optimizer_simplifies_constant_branches) {
                          "}\n");
 
   EXPECT_TRUE(optimized.find("br 0") == std::string::npos);
-  EXPECT_TRUE(optimized.find("jump %else") != std::string::npos);
+  EXPECT_TRUE(optimized.find("%then:\n") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%else:\n") != std::string::npos);
 }
 
 TEST_CASE(ir_optimizer_threads_trivial_jumps) {
@@ -78,6 +79,24 @@ TEST_CASE(ir_optimizer_threads_trivial_jumps) {
 
   EXPECT_TRUE(optimized.find("jump %mid") == std::string::npos);
   EXPECT_TRUE(optimized.find("jump %exit") != std::string::npos);
+}
+
+TEST_CASE(ir_optimizer_removes_unreachable_blocks) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(): i32 {\n"
+                         "%entry:\n"
+                         "  jump %live\n"
+                         "%dead:\n"
+                         "  %0 = add 1, 2\n"
+                         "  ret %0\n"
+                         "%live:\n"
+                         "  ret 0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%dead:\n") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%0 = add") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%live:\n") != std::string::npos);
 }
 
 TEST_CASE(ir_optimizer_eliminates_basic_block_common_subexpressions) {

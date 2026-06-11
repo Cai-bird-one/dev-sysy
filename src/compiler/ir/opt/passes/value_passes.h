@@ -34,6 +34,11 @@ public:
   PassResult run(IrFunction &function) override;
 };
 
+class UnreachableBlockEliminationPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
 class CommonSubexpressionEliminationPass : public FunctionPass {
 public:
   PassResult run(IrFunction &function) override;

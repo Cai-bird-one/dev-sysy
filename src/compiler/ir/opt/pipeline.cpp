@@ -16,6 +16,7 @@ PassManager buildPerfPipeline() {
       std::make_unique<CommonSubexpressionEliminationPass>());
   passes.addFunctionPass(std::make_unique<BranchSimplifyPass>());
   passes.addFunctionPass(std::make_unique<JumpThreadingPass>());
+  passes.addFunctionPass(std::make_unique<UnreachableBlockEliminationPass>());
   passes.addFunctionPass(std::make_unique<DeadCodeEliminationPass>());
   passes.addFunctionPass(std::make_unique<BlockCleanupPass>());
   return passes;
