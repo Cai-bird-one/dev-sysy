@@ -1,10 +1,27 @@
 #include "compiler/ir/opt/ir_optimizer.h"
+#include "compiler/ir/opt/analysis/control_flow_graph.h"
+#include "compiler/ir/opt/analysis/liveness_analysis.h"
 #include "compiler/riscv/riscv_generator.h"
 #include "tests/test_framework.h"
 
 #include <string>
 
 using namespace compiler;
+
+TEST_CASE(ir_liveness_tracks_values_across_basic_blocks) {
+  ir::opt::IrFunction function;
+  function.header = "fun @main(@a: i32): i32 {";
+  function.instructions = {"%entry:", "%0 = add @a, 1", "jump %next",
+                           "%next:", "ret %0"};
+
+  ir::opt::ControlFlowGraph cfg = ir::opt::buildControlFlowGraph(function);
+  ir::opt::LivenessInfo liveness = ir::opt::analyzeLiveness(function, cfg);
+
+  EXPECT_EQ(cfg.blocks.size(), static_cast<size_t>(2));
+  EXPECT_TRUE(liveness.live_out[1].find("%0") != liveness.live_out[1].end());
+  EXPECT_TRUE(liveness.live_in[3].find("%0") != liveness.live_in[3].end());
+  EXPECT_TRUE(liveness.live_in[4].find("%0") != liveness.live_in[4].end());
+}
 
 TEST_CASE(ir_optimizer_folds_constants_and_removes_dead_result) {
   ir::opt::IrOptimizer optimizer;

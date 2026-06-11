@@ -1,28 +1,23 @@
 #include "compiler/ir/opt/passes/value_passes.h"
 
+#include "compiler/ir/opt/analysis/liveness_analysis.h"
 #include "compiler/ir/opt/util/ir_opt_utils.h"
 
-#include <map>
-#include <set>
+#include <utility>
+#include <vector>
 
 namespace compiler::ir::opt {
 
 PassResult DeadCodeEliminationPass::run(IrFunction &function) {
-  std::map<std::string, int> uses;
-  for (const std::string &line : function.instructions) {
-    Assignment assignment = parseAssignment(line);
-    for (const std::string &name : collectValueNames(line)) {
-      if (!assignment.valid || name != assignment.result) {
-        ++uses[name];
-      }
-    }
-  }
-
+  LivenessInfo liveness = analyzeLiveness(function);
   PassResult result;
   std::vector<std::string> optimized;
-  for (const std::string &line : function.instructions) {
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    const std::string &line = function.instructions[i];
     Assignment assignment = parseAssignment(line);
-    if (assignment.valid && uses[assignment.result] == 0 &&
+    if (assignment.valid &&
+        liveness.live_out[i].find(assignment.result) ==
+            liveness.live_out[i].end() &&
         isSideEffectFree(assignment) && assignment.op != "alloc") {
       result.changed = true;
       continue;
