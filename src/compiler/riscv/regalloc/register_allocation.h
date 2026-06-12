@@ -11,6 +11,7 @@ class RegisterAllocation {
 public:
   bool hasRegister(const std::string &value) const;
   const std::string &registerFor(const std::string &value) const;
+  std::set<std::string> usedRegisters() const;
   void assign(const std::string &value, std::string reg);
   void addCallSavedValue(size_t instruction_index, const std::string &value);
   const std::set<std::string> &callSavedValues(size_t instruction_index) const;

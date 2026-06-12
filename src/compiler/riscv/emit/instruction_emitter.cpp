@@ -104,6 +104,9 @@ void InstructionEmitter::emitInstruction(const std::string &line,
     if (frame_.hasCall()) {
       output_.loadWord("ra", frame_.raOffset());
     }
+    for (const auto &[reg, offset] : frame_.calleeSavedRegisterOffsets()) {
+      output_.loadWord(reg, offset);
+    }
     output_.adjustStack(frame_.frameSize());
     output_.instruction("ret");
     return;

@@ -20,6 +20,9 @@ void FunctionEmitter::emit(std::ostream &output) {
   if (frame_.hasCall()) {
     asm_output.storeWord("ra", frame_.raOffset());
   }
+  for (const auto &[reg, offset] : frame_.calleeSavedRegisterOffsets()) {
+    asm_output.storeWord(reg, offset);
+  }
 
   OperandEmitter operands(frame_, asm_output);
   for (size_t i = 0; i < function_.params.size(); ++i) {

@@ -19,6 +19,14 @@ RegisterAllocation::registerFor(const std::string &value) const {
   return found->second;
 }
 
+std::set<std::string> RegisterAllocation::usedRegisters() const {
+  std::set<std::string> registers;
+  for (const auto &[_, reg] : registers_) {
+    registers.insert(reg);
+  }
+  return registers;
+}
+
 void RegisterAllocation::assign(const std::string &value, std::string reg) {
   registers_[value] = std::move(reg);
 }

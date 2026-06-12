@@ -11,11 +11,18 @@ namespace compiler::riscv {
 namespace {
 
 const std::vector<std::string> kAllocatableRegisters = {
-    "t3", "t4", "t5", "t6", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
+    "t3", "t4", "t5", "t6", "a1", "a2", "a3", "a4", "a5", "a6", "a7",
+    "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11"};
 const std::vector<std::string> kParameterRegisters = {"t3", "t4", "t5", "t6"};
 
 bool isKoopaValue(const std::string &text) {
   return !text.empty() && text[0] == '%';
+}
+
+bool isCalleeSavedRegister(const std::string &reg) {
+  return reg == "s1" || reg == "s2" || reg == "s3" || reg == "s4" ||
+         reg == "s5" || reg == "s6" || reg == "s7" || reg == "s8" ||
+         reg == "s9" || reg == "s10" || reg == "s11";
 }
 
 bool isScalarRegisterParam(const Function &function, size_t index) {
@@ -257,7 +264,8 @@ void RegisterAllocator::recordCallSavedValues(
       if (call.has_result && value == call.result) {
         continue;
       }
-      if (allocation.hasRegister(value)) {
+      if (allocation.hasRegister(value) &&
+          !isCalleeSavedRegister(allocation.registerFor(value))) {
         allocation.addCallSavedValue(i, value);
       }
     }

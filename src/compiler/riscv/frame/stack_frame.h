@@ -27,6 +27,7 @@ public:
   bool hasRegisterValue(const std::string &value) const;
   const std::string &registerFor(const std::string &value) const;
   const std::set<std::string> &callSavedValues(size_t instruction_index) const;
+  const std::map<std::string, int> &calleeSavedRegisterOffsets() const;
 
   bool isPointer(const std::string &value) const;
   bool isAggregateAlloc(const std::string &value) const;
@@ -43,6 +44,7 @@ private:
   std::map<std::string, int> stack_sizes_;
   std::map<std::string, std::vector<int>> pointer_dimensions_;
   std::set<std::string> aggregate_allocs_;
+  std::map<std::string, int> callee_saved_offsets_;
   int frame_size_ = 0;
   int ra_offset_ = 0;
   int outgoing_arg_size_ = 0;

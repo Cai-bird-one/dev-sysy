@@ -6,6 +6,15 @@
 #include <utility>
 
 namespace compiler::riscv {
+namespace {
+
+bool isCalleeSavedRegister(const std::string &reg) {
+  return reg == "s1" || reg == "s2" || reg == "s3" || reg == "s4" ||
+         reg == "s5" || reg == "s6" || reg == "s7" || reg == "s8" ||
+         reg == "s9" || reg == "s10" || reg == "s11";
+}
+
+} // namespace
 
 StackFrame::StackFrame(
     const Function &function,
@@ -49,6 +58,11 @@ const std::string &StackFrame::registerFor(const std::string &value) const {
 const std::set<std::string> &
 StackFrame::callSavedValues(size_t instruction_index) const {
   return registers_.callSavedValues(instruction_index);
+}
+
+const std::map<std::string, int> &
+StackFrame::calleeSavedRegisterOffsets() const {
+  return callee_saved_offsets_;
 }
 
 bool StackFrame::isPointer(const std::string &value) const {
@@ -142,6 +156,12 @@ void StackFrame::assignStackSlots() {
   if (has_call_) {
     ra_offset_ = next_offset;
     next_offset += 4;
+  }
+  for (const std::string &reg : registers_.usedRegisters()) {
+    if (isCalleeSavedRegister(reg)) {
+      callee_saved_offsets_[reg] = next_offset;
+      next_offset += 4;
+    }
   }
   frame_size_ = ((next_offset + 15) / 16) * 16;
 }
