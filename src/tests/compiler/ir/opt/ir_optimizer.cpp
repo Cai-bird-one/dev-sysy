@@ -82,6 +82,21 @@ TEST_CASE(ir_optimizer_simplifies_constant_branches) {
   EXPECT_TRUE(optimized.find("%else:\n") != std::string::npos);
 }
 
+TEST_CASE(ir_optimizer_simplifies_same_target_branches) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(@cond: i32): i32 {\n"
+                         "%entry:\n"
+                         "  br @cond, %exit, %exit\n"
+                         "%exit:\n"
+                         "  ret 0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("br @cond") == std::string::npos);
+  EXPECT_TRUE(optimized.find("jump %exit") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%exit:\n") != std::string::npos);
+}
+
 TEST_CASE(ir_optimizer_propagates_constants_across_blocks) {
   ir::opt::IrOptimizer optimizer;
   std::string optimized =
@@ -151,7 +166,23 @@ TEST_CASE(ir_optimizer_threads_trivial_jumps) {
                          "}\n");
 
   EXPECT_TRUE(optimized.find("jump %mid") == std::string::npos);
-  EXPECT_TRUE(optimized.find("jump %exit") != std::string::npos);
+  EXPECT_TRUE(optimized.find("jump %exit") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%exit:\n") != std::string::npos);
+}
+
+TEST_CASE(ir_optimizer_removes_jump_to_next_label) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(): i32 {\n"
+                         "%entry:\n"
+                         "  jump %next\n"
+                         "%next:\n"
+                         "  ret 0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("jump %next") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%next:\n") != std::string::npos);
+  EXPECT_TRUE(optimized.find("ret 0") != std::string::npos);
 }
 
 TEST_CASE(ir_optimizer_removes_unreachable_blocks) {

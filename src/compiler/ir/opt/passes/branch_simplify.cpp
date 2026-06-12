@@ -18,6 +18,11 @@ PassResult BranchSimplifyPass::run(IrFunction &function) {
       result.changed = true;
       continue;
     }
+    if (parts.size() == 4 && parts[0] == "br" && parts[2] == parts[3]) {
+      optimized.push_back("jump " + parts[2]);
+      result.changed = true;
+      continue;
+    }
     optimized.push_back(line);
   }
 

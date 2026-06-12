@@ -43,6 +43,12 @@ std::string resolveTarget(const std::string &target,
   return current;
 }
 
+bool fallsThroughToLabel(const std::vector<std::string> &instructions,
+                         size_t index, const std::string &target) {
+  return index + 1 < instructions.size() && isLabel(instructions[index + 1]) &&
+         labelName(instructions[index + 1]) == target;
+}
+
 } // namespace
 
 PassResult JumpThreadingPass::run(IrFunction &function) {
@@ -51,10 +57,15 @@ PassResult JumpThreadingPass::run(IrFunction &function) {
       collectTrivialJumps(function.instructions);
   std::vector<std::string> optimized;
 
-  for (const std::string &line : function.instructions) {
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    const std::string &line = function.instructions[i];
     std::vector<std::string> parts = splitWhitespace(line);
     if (parts.size() == 2 && parts[0] == "jump") {
       std::string target = resolveTarget(parts[1], jumps);
+      if (fallsThroughToLabel(function.instructions, i, target)) {
+        result.changed = true;
+        continue;
+      }
       optimized.push_back("jump " + target);
       result.changed = result.changed || target != parts[1];
       continue;
