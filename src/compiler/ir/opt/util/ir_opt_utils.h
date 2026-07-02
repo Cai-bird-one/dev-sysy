@@ -2,6 +2,7 @@
 
 #include "compiler/ir/opt/model/ir_module.h"
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -31,6 +32,8 @@ std::string formatAssignment(const Assignment &assignment);
 std::string replaceOperands(
     const std::string &line,
     const std::vector<std::pair<std::string, std::string>> &replacements);
+std::string replaceOperands(const std::string &line,
+                            const std::map<std::string, std::string> &replacements);
 long long evaluateBinary(const std::string &op, long long lhs, long long rhs);
 
 } // namespace compiler::ir::opt

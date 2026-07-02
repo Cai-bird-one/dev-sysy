@@ -30,7 +30,8 @@ TEST_CASE(stack_frame_tracks_offsets_calls_and_pointer_dimensions) {
   EXPECT_TRUE(frame.frameSize() >= 16);
   EXPECT_TRUE(frame.hasCall());
   EXPECT_TRUE(frame.raOffset() >= 0);
-  EXPECT_TRUE(frame.hasStackValue("@a"));
+  EXPECT_TRUE(frame.hasRegisterValue("@a"));
+  EXPECT_TRUE(!frame.hasStackValue("@a"));
   EXPECT_TRUE(frame.hasStackValue("%arr"));
   EXPECT_TRUE(frame.hasStackValue("%p"));
   EXPECT_TRUE(frame.isPointer("@a"));

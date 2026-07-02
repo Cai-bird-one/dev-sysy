@@ -10,6 +10,13 @@ OperandEmitter::OperandEmitter(const StackFrame &frame, AssemblyEmitter &output)
 
 void OperandEmitter::emitPointerAddress(const std::string &pointer,
                                         const std::string &reg) {
+  if (frame_.isPointer(pointer) && frame_.hasRegisterValue(pointer)) {
+    const std::string &allocated = frame_.registerFor(pointer);
+    if (allocated != reg) {
+      output_.instruction("mv " + reg + ", " + allocated);
+    }
+    return;
+  }
   if (frame_.isPointer(pointer) && frame_.hasStackValue(pointer)) {
     if (frame_.isAggregateAlloc(pointer)) {
       output_.loadStackAddress(frame_.offsetOf(pointer), reg);
@@ -57,6 +64,10 @@ void OperandEmitter::loadFromPointer(const std::string &pointer,
     output_.loadWord(reg, 0, reg);
     return;
   }
+  if (frame_.hasRegisterValue(pointer) && frame_.isPointer(pointer)) {
+    output_.loadWord(reg, 0, frame_.registerFor(pointer));
+    return;
+  }
   if (!frame_.hasStackValue(pointer)) {
     throw RiscvError("unknown Koopa pointer: " + pointer);
   }
@@ -73,6 +84,10 @@ void OperandEmitter::storeToPointer(const std::string &reg,
   if (startsWith(pointer, "@")) {
     output_.loadAddress("t1", stripSigil(pointer));
     output_.storeWord(reg, 0, "t1");
+    return;
+  }
+  if (frame_.hasRegisterValue(pointer) && frame_.isPointer(pointer)) {
+    output_.storeWord(reg, 0, frame_.registerFor(pointer));
     return;
   }
   if (frame_.hasStackValue(pointer) && frame_.isPointer(pointer) &&

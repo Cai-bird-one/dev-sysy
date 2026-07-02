@@ -177,7 +177,12 @@ std::string replaceOperands(
   for (const auto &replacement : replacements) {
     replacement_map[replacement.first] = replacement.second;
   }
+  return replaceOperands(line, replacement_map);
+}
 
+std::string replaceOperands(
+    const std::string &line,
+    const std::map<std::string, std::string> &replacements) {
   std::string result;
   for (size_t i = 0; i < line.size(); ++i) {
     if (line[i] != '%' && line[i] != '@') {
@@ -192,8 +197,8 @@ std::string replaceOperands(
       ++i;
     }
     std::string name = line.substr(begin, i - begin);
-    auto found = replacement_map.find(name);
-    result += found == replacement_map.end() ? name : found->second;
+    auto found = replacements.find(name);
+    result += found == replacements.end() ? name : found->second;
     if (i < line.size()) {
       --i;
     }

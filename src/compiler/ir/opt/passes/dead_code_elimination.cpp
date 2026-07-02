@@ -9,15 +9,13 @@
 namespace compiler::ir::opt {
 
 PassResult DeadCodeEliminationPass::run(IrFunction &function) {
-  LivenessInfo liveness = analyzeLiveness(function);
+  DenseLivenessInfo liveness = analyzeDenseLiveness(function);
   PassResult result;
   std::vector<std::string> optimized;
   for (size_t i = 0; i < function.instructions.size(); ++i) {
     const std::string &line = function.instructions[i];
     Assignment assignment = parseAssignment(line);
-    if (assignment.valid &&
-        liveness.live_out[i].find(assignment.result) ==
-            liveness.live_out[i].end() &&
+    if (assignment.valid && !isLiveOut(liveness, i, assignment.result) &&
         isSideEffectFree(assignment) && assignment.op != "alloc") {
       result.changed = true;
       continue;

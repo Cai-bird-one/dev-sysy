@@ -38,9 +38,29 @@ TEST_CASE(register_allocator_saves_values_live_across_calls) {
   EXPECT_TRUE(allocation.hasRegister("%0"));
   EXPECT_TRUE(allocation.hasRegister("%1"));
   EXPECT_TRUE(allocation.hasRegister("%2"));
-  EXPECT_TRUE(allocation.needsCallSaveSlot("%0"));
-  EXPECT_TRUE(allocation.callSavedValues(2).find("%0") !=
+  EXPECT_TRUE(allocation.registerFor("%0").rfind("s", 0) == 0);
+  EXPECT_TRUE(!allocation.needsCallSaveSlot("%0"));
+  EXPECT_TRUE(allocation.callSavedValues(2).find("%0") ==
               allocation.callSavedValues(2).end());
+}
+
+TEST_CASE(register_allocator_keeps_pointer_temporaries_in_registers) {
+  riscv::Function function;
+  function.name = "main";
+  function.instructions = {
+      "%entry:",
+      "  %arr = alloc [i32, 4]",
+      "  %0 = getelemptr %arr, 2",
+      "  store 7, %0",
+      "  %1 = load %0",
+      "  ret %1",
+  };
+
+  riscv::RegisterAllocation allocation =
+      riscv::RegisterAllocator().allocate(function);
+
+  EXPECT_TRUE(allocation.hasRegister("%0"));
+  EXPECT_TRUE(allocation.hasRegister("%1"));
 }
 
 TEST_CASE(register_allocator_colors_scalar_parameters) {

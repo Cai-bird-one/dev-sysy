@@ -108,7 +108,7 @@ TEST_CASE(riscv_generator_handles_arrays_and_getelemptr) {
               std::string::npos);
   EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
   EXPECT_TRUE(riscv.find("slli t1, t1, 2") != std::string::npos);
-  EXPECT_TRUE(riscv.find("sw t0, 0(t1)") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw t0, 0(") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_treats_single_element_arrays_as_stack_addresses) {
@@ -140,8 +140,8 @@ TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
       "}\n");
 
   EXPECT_TRUE(riscv.find("sum:\n") != std::string::npos);
-  EXPECT_TRUE(riscv.find("sw a0") != std::string::npos);
-  EXPECT_TRUE(riscv.find("sw a1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("sw a0") == std::string::npos);
+  EXPECT_TRUE(riscv.find("sw a1") == std::string::npos);
   EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
   EXPECT_TRUE(riscv.find("slli t1, t1, 2") != std::string::npos);
 }
@@ -275,14 +275,15 @@ TEST_CASE(riscv_generator_saves_register_values_live_across_calls) {
       "  ret %2\n"
       "}\n");
 
-  size_t save = riscv.find("  sw ");
   size_t call = riscv.find("  call f\n");
-  size_t restore = riscv.find("  call f\n  lw ");
+  size_t save_s = riscv.find("  sw s1, ");
+  size_t restore_s = riscv.find("  lw s1, ");
 
-  EXPECT_TRUE(save != std::string::npos);
   EXPECT_TRUE(call != std::string::npos);
-  EXPECT_TRUE(restore != std::string::npos);
-  EXPECT_TRUE(save < call);
+  EXPECT_TRUE(save_s != std::string::npos);
+  EXPECT_TRUE(restore_s != std::string::npos);
+  EXPECT_TRUE(save_s < call);
+  EXPECT_TRUE(call < restore_s);
 }
 
 TEST_CASE(riscv_generator_preserves_used_callee_saved_registers) {

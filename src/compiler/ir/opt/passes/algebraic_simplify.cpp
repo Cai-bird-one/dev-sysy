@@ -15,11 +15,6 @@ std::string resolve(const std::string &operand,
   return found == values.end() ? operand : found->second;
 }
 
-std::vector<std::pair<std::string, std::string>>
-replacements(const std::map<std::string, std::string> &values) {
-  return {values.begin(), values.end()};
-}
-
 bool simplify(const Assignment &assignment, std::string &replacement) {
   if (assignment.args.size() != 2) {
     return false;
@@ -61,7 +56,7 @@ PassResult AlgebraicSimplifyPass::run(IrFunction &function) {
       continue;
     }
 
-    std::string replaced = replaceOperands(line, replacements(values));
+    std::string replaced = replaceOperands(line, values);
     if (replaced != line) {
       line = std::move(replaced);
       result.changed = true;

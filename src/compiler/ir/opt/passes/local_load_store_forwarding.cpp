@@ -27,11 +27,6 @@ std::string resolve(const std::string &operand,
   return found == values.end() ? operand : found->second;
 }
 
-std::vector<std::pair<std::string, std::string>>
-replacements(const std::map<std::string, std::string> &values) {
-  return {values.begin(), values.end()};
-}
-
 bool isCall(const Assignment &assignment, const std::vector<std::string> &parts) {
   return (assignment.valid && assignment.op == "call") ||
          (!parts.empty() && parts[0] == "call");
@@ -56,7 +51,7 @@ PassResult LocalLoadStoreForwardingPass::run(IrFunction &function) {
       continue;
     }
 
-    std::string replaced = replaceOperands(line, replacements(values));
+    std::string replaced = replaceOperands(line, values);
     if (replaced != line) {
       line = std::move(replaced);
       result.changed = true;

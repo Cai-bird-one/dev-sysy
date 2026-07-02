@@ -119,7 +119,9 @@ void StackFrame::assignStackSlots() {
           aggregate_allocs_.insert(parts[0]);
         }
       } else if (parts[2] == "getelemptr") {
-        stack_values.insert(parts[0]);
+        if (!hasRegisterValue(parts[0])) {
+          stack_values.insert(parts[0]);
+        }
         std::vector<int> base_dims = dimensionsForPointer(parts[3]);
         if (!base_dims.empty()) {
           pointer_dimensions_[parts[0]] =
@@ -128,7 +130,9 @@ void StackFrame::assignStackSlots() {
           pointer_dimensions_[parts[0]] = {};
         }
       } else if (parts[2] == "getptr") {
-        stack_values.insert(parts[0]);
+        if (!hasRegisterValue(parts[0])) {
+          stack_values.insert(parts[0]);
+        }
         pointer_dimensions_[parts[0]] = dimensionsForPointer(parts[3]);
       } else if (!hasRegisterValue(parts[0])) {
         stack_values.insert(parts[0]);

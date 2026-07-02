@@ -21,11 +21,6 @@ std::string resolve(const std::string &operand,
   return found == constants.end() ? operand : found->second;
 }
 
-std::vector<std::pair<std::string, std::string>>
-replacements(const std::map<std::string, std::string> &constants) {
-  return {constants.begin(), constants.end()};
-}
-
 } // namespace
 
 PassResult ConstantFoldingPass::run(IrFunction &function) {
@@ -42,7 +37,7 @@ PassResult ConstantFoldingPass::run(IrFunction &function) {
       continue;
     }
 
-    std::string replaced = replaceOperands(line, replacements(constants));
+    std::string replaced = replaceOperands(line, constants);
     if (replaced != line) {
       line = std::move(replaced);
       result.changed = true;

@@ -4,16 +4,25 @@
 #include "compiler/riscv/util/riscv_utils.h"
 
 #include <algorithm>
+#include <limits>
+#include <map>
+#include <unordered_map>
 #include <utility>
 
 namespace compiler::riscv {
 
 namespace {
 
-const std::vector<std::string> kAllocatableRegisters = {
-    "t3", "t4", "t5", "t6", "a1", "a2", "a3", "a4", "a5", "a6", "a7",
+const std::vector<std::string> kTempRegisters = {"t3", "t4", "t5", "t6"};
+const std::vector<std::string> kArgumentRegisters = {"a1", "a2", "a3", "a4",
+                                                     "a5", "a6", "a7"};
+const std::vector<std::string> kCalleeSavedRegisters = {
     "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11"};
-const std::vector<std::string> kParameterRegisters = {"t3", "t4", "t5", "t6"};
+
+const int kNoFutureUse = std::numeric_limits<int>::max() / 4;
+const int kBitsPerWord = 64;
+
+using BitVector = std::vector<unsigned long long>;
 
 bool isKoopaValue(const std::string &text) {
   return !text.empty() && text[0] == '%';
@@ -25,14 +34,21 @@ bool isCalleeSavedRegister(const std::string &reg) {
          reg == "s9" || reg == "s10" || reg == "s11";
 }
 
-bool isScalarRegisterParam(const Function &function, size_t index) {
+bool isRegisterParam(const Function &function, size_t index) {
   if (index >= 8) {
     return false;
   }
   if (index >= function.param_types.size()) {
     return true;
   }
-  return function.param_types[index] == "i32";
+  return function.param_types[index] == "i32" ||
+         startsWith(function.param_types[index], "*");
+}
+
+bool isCallInstruction(const std::string &line,
+                       const std::vector<std::string> &parts) {
+  return startsWith(line, "call @") ||
+         (parts.size() >= 3 && parts[1] == "=" && parts[2] == "call");
 }
 
 void addUse(std::set<std::string> &uses, const std::set<std::string> &allowed,
@@ -42,28 +58,93 @@ void addUse(std::set<std::string> &uses, const std::set<std::string> &allowed,
   }
 }
 
-void addEdge(std::map<std::string, std::set<std::string>> &graph,
-             const std::string &left, const std::string &right) {
-  if (left == right) {
-    return;
-  }
-  graph[left].insert(right);
-  graph[right].insert(left);
+void appendAll(std::vector<std::string> &target,
+               const std::vector<std::string> &source) {
+  target.insert(target.end(), source.begin(), source.end());
 }
 
-std::set<std::string> setUnion(const std::set<std::string> &left,
-                               const std::set<std::string> &right) {
-  std::set<std::string> result = left;
-  result.insert(right.begin(), right.end());
-  return result;
+bool containsRegister(const std::vector<std::string> &registers,
+                      const std::string &reg) {
+  return std::find(registers.begin(), registers.end(), reg) != registers.end();
 }
 
-std::set<std::string> withoutDefs(std::set<std::string> values,
-                                  const std::set<std::string> &defs) {
-  for (const std::string &def : defs) {
-    values.erase(def);
+std::vector<std::string>
+registerPreferenceFor(const RegisterAllocator::LiveInterval &interval) {
+  std::vector<std::string> registers;
+  if (interval.crosses_call) {
+    appendAll(registers, kCalleeSavedRegisters);
+    appendAll(registers, kTempRegisters);
+    return registers;
   }
-  return values;
+  if (interval.is_parameter) {
+    appendAll(registers, kTempRegisters);
+    appendAll(registers, kCalleeSavedRegisters);
+    return registers;
+  }
+  if (interval.used_at_call) {
+    appendAll(registers, kTempRegisters);
+    appendAll(registers, kCalleeSavedRegisters);
+    return registers;
+  }
+  appendAll(registers, kTempRegisters);
+  appendAll(registers, kArgumentRegisters);
+  appendAll(registers, kCalleeSavedRegisters);
+  return registers;
+}
+
+int nextUseAfter(const RegisterAllocator::LiveInterval &interval,
+                 int position) {
+  auto found =
+      std::lower_bound(interval.uses.begin(), interval.uses.end(), position);
+  if (found == interval.uses.end()) {
+    return kNoFutureUse;
+  }
+  return *found;
+}
+
+void recordPoint(RegisterAllocator::LiveInterval &interval, int position,
+                 bool is_use) {
+  interval.start = std::min(interval.start, position);
+  interval.end = std::max(interval.end, position);
+  if (is_use) {
+    interval.uses.push_back(position);
+  }
+}
+
+void setBit(BitVector &bits, int id) {
+  bits[static_cast<size_t>(id / kBitsPerWord)] |=
+      1ULL << (id % kBitsPerWord);
+}
+
+void clearBit(BitVector &bits, int id) {
+  bits[static_cast<size_t>(id / kBitsPerWord)] &=
+      ~(1ULL << (id % kBitsPerWord));
+}
+
+void orInto(BitVector &target, const BitVector &source) {
+  for (size_t i = 0; i < target.size(); ++i) {
+    target[i] |= source[i];
+  }
+}
+
+bool equalBits(const BitVector &left, const BitVector &right) {
+  return left == right;
+}
+
+template <typename Callback>
+void forEachSetBit(const BitVector &bits, const std::vector<std::string> &values,
+                   Callback callback) {
+  for (size_t word = 0; word < bits.size(); ++word) {
+    unsigned long long remaining = bits[word];
+    while (remaining != 0) {
+      int bit = __builtin_ctzll(remaining);
+      size_t id = word * kBitsPerWord + static_cast<size_t>(bit);
+      if (id < values.size()) {
+        callback(values[id]);
+      }
+      remaining &= remaining - 1;
+    }
+  }
 }
 
 } // namespace
@@ -73,13 +154,12 @@ RegisterAllocation RegisterAllocator::allocate(const Function &function) const {
   std::set<std::string> register_params = collectRegisterParamValues(function);
   std::vector<InstructionInfo> instructions =
       analyzeInstructions(function, allocatable);
-  std::vector<std::set<std::string>> live_in;
-  std::vector<std::set<std::string>> live_out;
+  LivenessInfo liveness = analyzeLiveness(instructions);
   RegisterAllocation allocation =
-      colorGraph(buildInterferenceGraph(allocatable, instructions, live_in,
-                                        live_out),
-                 register_params);
-  recordCallSavedValues(function, live_out, allocation);
+      linearScanAllocate(buildLiveIntervals(function, allocatable,
+                                            register_params, instructions,
+                                            liveness));
+  recordCallSavedValues(function, liveness, allocation);
   return allocation;
 }
 
@@ -87,7 +167,7 @@ std::set<std::string>
 RegisterAllocator::collectAllocatableValues(const Function &function) const {
   std::set<std::string> values;
   for (size_t i = 0; i < function.params.size(); ++i) {
-    if (isScalarRegisterParam(function, i)) {
+    if (isRegisterParam(function, i)) {
       values.insert(function.params[i]);
     }
   }
@@ -96,8 +176,7 @@ RegisterAllocator::collectAllocatableValues(const Function &function) const {
     if (parts.size() < 3 || parts[1] != "=" || !isKoopaValue(parts[0])) {
       continue;
     }
-    const std::string &op = parts[2];
-    if (op == "alloc" || op == "getelemptr" || op == "getptr") {
+    if (parts[2] == "alloc") {
       continue;
     }
     values.insert(parts[0]);
@@ -109,7 +188,7 @@ std::set<std::string>
 RegisterAllocator::collectRegisterParamValues(const Function &function) const {
   std::set<std::string> values;
   for (size_t i = 0; i < function.params.size(); ++i) {
-    if (isScalarRegisterParam(function, i)) {
+    if (isRegisterParam(function, i)) {
       values.insert(function.params[i]);
     }
   }
@@ -165,9 +244,7 @@ RegisterAllocator::analyzeInstructions(
     if (parts[0] == "store") {
       addUse(info.uses, allocatable, parts[1]);
       addUse(info.uses, allocatable, parts[2]);
-    } else if (startsWith(line, "call @") ||
-               (parts.size() >= 3 && parts[1] == "=" &&
-                parts[2] == "call")) {
+    } else if (isCallInstruction(line, parts)) {
       CallInstruction call = parseCallInstruction(line);
       if (call.has_result && allocatable.find(call.result) != allocatable.end()) {
         info.defs.insert(call.result);
@@ -199,121 +276,247 @@ RegisterAllocator::analyzeInstructions(
   return instructions;
 }
 
-std::map<std::string, std::set<std::string>>
-RegisterAllocator::buildInterferenceGraph(
-    const std::set<std::string> &allocatable,
-    const std::vector<InstructionInfo> &instructions,
-    std::vector<std::set<std::string>> &live_in,
-    std::vector<std::set<std::string>> &live_out) const {
-  std::map<std::string, std::set<std::string>> graph;
-  for (const std::string &value : allocatable) {
-    graph[value];
+RegisterAllocator::LivenessInfo RegisterAllocator::analyzeLiveness(
+    const std::vector<InstructionInfo> &instructions) const {
+  std::unordered_map<std::string, int> value_ids;
+  std::vector<std::string> values;
+  auto internValue = [&](const std::string &value) {
+    auto found = value_ids.find(value);
+    if (found != value_ids.end()) {
+      return found->second;
+    }
+    int id = static_cast<int>(values.size());
+    value_ids[value] = id;
+    values.push_back(value);
+    return id;
+  };
+  for (const InstructionInfo &instruction : instructions) {
+    for (const std::string &value : instruction.uses) {
+      internValue(value);
+    }
+    for (const std::string &value : instruction.defs) {
+      internValue(value);
+    }
   }
 
-  live_in.assign(instructions.size(), {});
-  live_out.assign(instructions.size(), {});
+  size_t word_count =
+      (values.size() + static_cast<size_t>(kBitsPerWord - 1)) /
+      static_cast<size_t>(kBitsPerWord);
+  std::vector<BitVector> live_in_bits(instructions.size(),
+                                      BitVector(word_count, 0));
+  std::vector<BitVector> live_out_bits(instructions.size(),
+                                       BitVector(word_count, 0));
+  BitVector next_out(word_count, 0);
+  BitVector next_in(word_count, 0);
   bool changed = true;
   while (changed) {
     changed = false;
     for (size_t offset = 0; offset < instructions.size(); ++offset) {
       size_t i = instructions.size() - 1 - offset;
-      std::set<std::string> next_out;
+      std::fill(next_out.begin(), next_out.end(), 0);
       for (int successor : instructions[i].successors) {
-        next_out = setUnion(next_out, live_in[successor]);
+        orInto(next_out, live_in_bits[successor]);
       }
-      std::set<std::string> next_in =
-          setUnion(instructions[i].uses,
-                   withoutDefs(next_out, instructions[i].defs));
-      if (next_in != live_in[i] || next_out != live_out[i]) {
-        live_in[i] = std::move(next_in);
-        live_out[i] = std::move(next_out);
+      next_in = next_out;
+      for (const std::string &value : instructions[i].defs) {
+        clearBit(next_in, value_ids[value]);
+      }
+      for (const std::string &value : instructions[i].uses) {
+        setBit(next_in, value_ids[value]);
+      }
+      if (!equalBits(next_in, live_in_bits[i]) ||
+          !equalBits(next_out, live_out_bits[i])) {
+        live_in_bits[i] = next_in;
+        live_out_bits[i] = next_out;
         changed = true;
       }
     }
   }
 
+  LivenessInfo result;
+  result.values = std::move(values);
+  result.live_in = std::move(live_in_bits);
+  result.live_out = std::move(live_out_bits);
+  return result;
+}
+
+std::vector<RegisterAllocator::LiveInterval>
+RegisterAllocator::buildLiveIntervals(
+    const Function &function, const std::set<std::string> &allocatable,
+    const std::set<std::string> &register_params,
+    const std::vector<InstructionInfo> &instructions,
+    const LivenessInfo &liveness) const {
+  std::map<std::string, LiveInterval> intervals;
+  for (const std::string &value : allocatable) {
+    LiveInterval interval;
+    interval.value = value;
+    interval.start = kNoFutureUse;
+    interval.end = -1;
+    interval.is_parameter = register_params.find(value) != register_params.end();
+    intervals[value] = std::move(interval);
+  }
+
+  for (const std::string &param : register_params) {
+    auto found = intervals.find(param);
+    if (found != intervals.end()) {
+      recordPoint(found->second, 0, false);
+    }
+  }
+
   for (size_t i = 0; i < instructions.size(); ++i) {
-    for (const std::string &def : instructions[i].defs) {
-      for (const std::string &live : live_out[i]) {
-        addEdge(graph, def, live);
+    int use_position = static_cast<int>(i * 2);
+    int def_position = use_position + 1;
+    forEachSetBit(liveness.live_in[i], liveness.values,
+                  [&](const std::string &value) {
+                    recordPoint(intervals[value], use_position, false);
+                  });
+    forEachSetBit(liveness.live_out[i], liveness.values,
+                  [&](const std::string &value) {
+                    recordPoint(intervals[value], def_position, false);
+                  });
+    for (const std::string &value : instructions[i].uses) {
+      recordPoint(intervals[value], use_position, true);
+    }
+    for (const std::string &value : instructions[i].defs) {
+      recordPoint(intervals[value], def_position, false);
+    }
+
+    std::vector<std::string> parts = splitWhitespace(function.instructions[i]);
+    if (!isCallInstruction(function.instructions[i], parts)) {
+      continue;
+    }
+    for (const std::string &value : instructions[i].uses) {
+      intervals[value].used_at_call = true;
+    }
+    forEachSetBit(liveness.live_out[i], liveness.values,
+                  [&](const std::string &value) {
+                    intervals[value].crosses_call = true;
+                  });
+  }
+
+  std::vector<LiveInterval> result;
+  for (auto &[_, interval] : intervals) {
+    if (interval.end < interval.start || interval.uses.empty()) {
+      continue;
+    }
+    std::sort(interval.uses.begin(), interval.uses.end());
+    interval.uses.erase(std::unique(interval.uses.begin(), interval.uses.end()),
+                        interval.uses.end());
+    result.push_back(std::move(interval));
+  }
+  return result;
+}
+
+RegisterAllocation RegisterAllocator::linearScanAllocate(
+    std::vector<LiveInterval> intervals) const {
+  std::sort(intervals.begin(), intervals.end(),
+            [](const LiveInterval &left, const LiveInterval &right) {
+              if (left.start != right.start) {
+                return left.start < right.start;
+              }
+              if (left.end != right.end) {
+                return left.end > right.end;
+              }
+              return left.value < right.value;
+            });
+
+  std::vector<size_t> active;
+  for (size_t i = 0; i < intervals.size(); ++i) {
+    LiveInterval &current = intervals[i];
+    active.erase(std::remove_if(active.begin(), active.end(),
+                                [&](size_t active_index) {
+                                  return intervals[active_index].end <
+                                         current.start;
+                                }),
+                 active.end());
+
+    std::vector<std::string> preferred_registers =
+        registerPreferenceFor(current);
+    std::set<std::string> unavailable;
+    for (size_t active_index : active) {
+      if (intervals[active_index].assigned) {
+        unavailable.insert(intervals[active_index].reg);
       }
     }
-  }
-  if (!live_in.empty()) {
-    for (const std::string &left : live_in.front()) {
-      for (const std::string &right : live_in.front()) {
-        addEdge(graph, left, right);
+
+    std::string chosen;
+    for (const std::string &reg : preferred_registers) {
+      if (unavailable.find(reg) == unavailable.end()) {
+        chosen = reg;
+        break;
       }
     }
+    if (!chosen.empty()) {
+      current.assigned = true;
+      current.reg = chosen;
+      active.push_back(i);
+      continue;
+    }
+
+    int current_next_use = nextUseAfter(current, current.start);
+    auto spill_it = active.end();
+    int latest_next_use = -1;
+    int latest_end = -1;
+    for (auto it = active.begin(); it != active.end(); ++it) {
+      LiveInterval &candidate = intervals[*it];
+      if (!candidate.assigned ||
+          !containsRegister(preferred_registers, candidate.reg)) {
+        continue;
+      }
+      int candidate_next_use = nextUseAfter(candidate, current.start);
+      if (candidate_next_use > latest_next_use ||
+          (candidate_next_use == latest_next_use &&
+           candidate.end > latest_end)) {
+        spill_it = it;
+        latest_next_use = candidate_next_use;
+        latest_end = candidate.end;
+      }
+    }
+
+    if (spill_it != active.end() &&
+        (latest_next_use > current_next_use ||
+         (latest_next_use == current_next_use &&
+          intervals[*spill_it].end > current.end))) {
+      LiveInterval &spilled = intervals[*spill_it];
+      current.assigned = true;
+      current.reg = spilled.reg;
+      spilled.assigned = false;
+      spilled.reg.clear();
+      active.erase(spill_it);
+      active.push_back(i);
+    }
   }
-  return graph;
+
+  RegisterAllocation allocation;
+  for (const LiveInterval &interval : intervals) {
+    if (interval.assigned) {
+      allocation.assign(interval.value, interval.reg);
+    }
+  }
+  return allocation;
 }
 
 void RegisterAllocator::recordCallSavedValues(
-    const Function &function, const std::vector<std::set<std::string>> &live_out,
+    const Function &function, const LivenessInfo &liveness,
     RegisterAllocation &allocation) const {
   for (size_t i = 0; i < function.instructions.size(); ++i) {
     const std::string &line = function.instructions[i];
     std::vector<std::string> parts = splitWhitespace(line);
-    if (!(startsWith(line, "call @") ||
-          (parts.size() >= 3 && parts[1] == "=" && parts[2] == "call"))) {
+    if (!isCallInstruction(line, parts)) {
       continue;
     }
     CallInstruction call = parseCallInstruction(line);
-    for (const std::string &value : live_out[i]) {
+    forEachSetBit(liveness.live_out[i], liveness.values,
+                  [&](const std::string &value) {
       if (call.has_result && value == call.result) {
-        continue;
+        return;
       }
       if (allocation.hasRegister(value) &&
           !isCalleeSavedRegister(allocation.registerFor(value))) {
         allocation.addCallSavedValue(i, value);
       }
-    }
+                  });
   }
-}
-
-RegisterAllocation RegisterAllocator::colorGraph(
-    const std::map<std::string, std::set<std::string>> &graph,
-    const std::set<std::string> &register_params) const {
-  RegisterAllocation allocation;
-  std::vector<std::pair<std::string, size_t>> order;
-  for (const auto &[value, neighbors] : graph) {
-    order.push_back({value, neighbors.size()});
-  }
-  std::sort(order.begin(), order.end(),
-            [](const auto &left, const auto &right) {
-              if (left.second != right.second) {
-                return left.second > right.second;
-              }
-              return left.first < right.first;
-            });
-
-  std::map<std::string, std::string> assigned;
-  for (const auto &[value, _] : order) {
-    std::set<std::string> unavailable;
-    auto found = graph.find(value);
-    if (found != graph.end()) {
-      for (const std::string &neighbor : found->second) {
-        auto assigned_neighbor = assigned.find(neighbor);
-        if (assigned_neighbor != assigned.end()) {
-          unavailable.insert(assigned_neighbor->second);
-        }
-      }
-    }
-
-    const std::vector<std::string> &available_registers =
-        register_params.find(value) == register_params.end()
-            ? kAllocatableRegisters
-            : kParameterRegisters;
-    for (const std::string &reg : available_registers) {
-      if (unavailable.find(reg) == unavailable.end()) {
-        assigned[value] = reg;
-        allocation.assign(value, reg);
-        break;
-      }
-    }
-  }
-  return allocation;
 }
 
 } // namespace compiler::riscv

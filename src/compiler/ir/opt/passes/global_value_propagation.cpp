@@ -4,10 +4,39 @@
 #include "compiler/ir/opt/passes/global_value_facts.h"
 #include "compiler/ir/opt/util/ir_opt_utils.h"
 
+#include <cctype>
 #include <utility>
 #include <vector>
 
 namespace compiler::ir::opt {
+namespace {
+
+std::string replaceOperandsWithValueFacts(const std::string &line,
+                                          const ValueFacts &facts) {
+  std::string result;
+  for (size_t i = 0; i < line.size(); ++i) {
+    if (line[i] != '%' && line[i] != '@') {
+      result.push_back(line[i]);
+      continue;
+    }
+
+    size_t begin = i;
+    ++i;
+    while (i < line.size() &&
+           (std::isalnum(static_cast<unsigned char>(line[i])) ||
+            line[i] == '_')) {
+      ++i;
+    }
+    std::string name = line.substr(begin, i - begin);
+    result += resolveValueFact(name, facts);
+    if (i < line.size()) {
+      --i;
+    }
+  }
+  return result;
+}
+
+} // namespace
 
 PassResult GlobalValuePropagationPass::run(IrFunction &function) {
   PassResult result;
@@ -39,8 +68,7 @@ PassResult GlobalValuePropagationPass::run(IrFunction &function) {
         continue;
       }
 
-      std::string replaced =
-          replaceOperands(line, valueFactReplacements(facts));
+      std::string replaced = replaceOperandsWithValueFacts(line, facts);
       if (replaced != line) {
         optimized[i] = std::move(replaced);
         result.changed = true;

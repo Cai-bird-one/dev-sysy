@@ -68,13 +68,14 @@ void FunctionBodyEmitter::collectLocalArrayDef(
   define(name, Symbol{SymbolKind::Variable, 0, pointer, dimensions, assignable,
                       false});
 
+  if (initializer == nullptr) {
+    return;
+  }
+
   long long count = elementCount(dimensions);
   for (long long i = 0; i < count; ++i) {
     std::string element_pointer = emitArrayElementPointer(pointer, dimensions, i);
     emit("store 0, " + element_pointer);
-  }
-  if (initializer == nullptr) {
-    return;
   }
 
   std::vector<std::pair<long long, Value>> entries;
