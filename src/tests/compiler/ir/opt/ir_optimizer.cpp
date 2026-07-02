@@ -324,3 +324,64 @@ TEST_CASE(ir_optimizer_keeps_call_commas_when_replacing_operands) {
 
   EXPECT_TRUE(optimized.find("call @sum(3, 3)") != std::string::npos);
 }
+
+TEST_CASE(ir_optimizer_hoists_loop_invariant_expressions) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("global @g = alloc i32, zeroinit\n"
+                         "\n"
+                         "fun @main(@x: i32, @cond: i32): i32 {\n"
+                         "%entry:\n"
+                         "  jump %loop\n"
+                         "%loop:\n"
+                         "  %0 = mul @x, 3\n"
+                         "  br @cond, %body, %exit\n"
+                         "%body:\n"
+                         "  %1 = add %0, @x\n"
+                         "  store %1, @g\n"
+                         "  jump %loop\n"
+                         "%exit:\n"
+                         "  ret 0\n"
+                         "}\n");
+
+  size_t entry = optimized.find("%entry:\n");
+  size_t multiply = optimized.find("%0 = mul @x, 3");
+  size_t add = optimized.find("%1 = add %0, @x");
+  size_t loop = optimized.find("%loop:\n");
+
+  EXPECT_TRUE(entry != std::string::npos);
+  EXPECT_TRUE(multiply != std::string::npos);
+  EXPECT_TRUE(add != std::string::npos);
+  EXPECT_TRUE(loop != std::string::npos);
+  EXPECT_TRUE(entry < multiply);
+  EXPECT_TRUE(multiply < add);
+  EXPECT_TRUE(add < loop);
+}
+
+TEST_CASE(ir_optimizer_keeps_loop_loads_inside_loop) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("global @g = alloc i32, zeroinit\n"
+                         "global @out = alloc i32, zeroinit\n"
+                         "\n"
+                         "fun @main(@cond: i32): i32 {\n"
+                         "%entry:\n"
+                         "  jump %loop\n"
+                         "%loop:\n"
+                         "  %0 = load @g\n"
+                         "  br @cond, %body, %exit\n"
+                         "%body:\n"
+                         "  store %0, @out\n"
+                         "  store @cond, @g\n"
+                         "  jump %loop\n"
+                         "%exit:\n"
+                         "  ret 0\n"
+                         "}\n");
+
+  size_t loop = optimized.find("%loop:\n");
+  size_t load = optimized.find("%0 = load @g");
+
+  EXPECT_TRUE(loop != std::string::npos);
+  EXPECT_TRUE(load != std::string::npos);
+  EXPECT_TRUE(loop < load);
+}

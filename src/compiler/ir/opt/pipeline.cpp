@@ -16,6 +16,7 @@ PassManager buildPerfPipeline() {
   passes.addFunctionPass(std::make_unique<LocalDeadStoreEliminationPass>());
   passes.addFunctionPass(
       std::make_unique<CommonSubexpressionEliminationPass>());
+  passes.addFunctionPass(std::make_unique<LoopInvariantCodeMotionPass>());
   passes.addFunctionPass(std::make_unique<BranchSimplifyPass>());
   passes.addFunctionPass(std::make_unique<JumpThreadingPass>());
   passes.addFunctionPass(std::make_unique<UnreachableBlockEliminationPass>());

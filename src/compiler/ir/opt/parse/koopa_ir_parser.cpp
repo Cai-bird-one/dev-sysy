@@ -17,7 +17,7 @@ IrModule KoopaIrParser::parse(const std::string &koopa_ir) const {
 
   while (std::getline(input, line)) {
     line = trim(line);
-    if (line.empty()) {
+    if (line.empty() || startsWith(line, "//")) {
       continue;
     }
 

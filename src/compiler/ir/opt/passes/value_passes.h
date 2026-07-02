@@ -64,4 +64,9 @@ public:
   PassResult run(IrFunction &function) override;
 };
 
+class LoopInvariantCodeMotionPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
 } // namespace compiler::ir::opt

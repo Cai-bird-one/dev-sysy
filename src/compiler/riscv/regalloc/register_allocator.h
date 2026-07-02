@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compiler/ir/opt/analysis/liveness_analysis.h"
 #include "compiler/riscv/model/koopa_program.h"
 #include "compiler/riscv/regalloc/register_allocation.h"
 
@@ -16,7 +17,6 @@ public:
   struct InstructionInfo {
     std::set<std::string> defs;
     std::set<std::string> uses;
-    std::vector<int> successors;
   };
 
   struct LiveInterval {
@@ -31,11 +31,7 @@ public:
     std::string reg;
   };
 
-  struct LivenessInfo {
-    std::vector<std::string> values;
-    std::vector<std::vector<unsigned long long>> live_in;
-    std::vector<std::vector<unsigned long long>> live_out;
-  };
+  using LivenessInfo = compiler::ir::opt::DenseLivenessInfo;
 
 private:
   std::set<std::string> collectAllocatableValues(const Function &function) const;
@@ -44,8 +40,7 @@ private:
   std::vector<InstructionInfo>
   analyzeInstructions(const Function &function,
                       const std::set<std::string> &allocatable) const;
-  LivenessInfo
-  analyzeLiveness(const std::vector<InstructionInfo> &instructions) const;
+  LivenessInfo analyzeLiveness(const Function &function) const;
   std::vector<LiveInterval> buildLiveIntervals(
       const Function &function, const std::set<std::string> &allocatable,
       const std::set<std::string> &register_params,
