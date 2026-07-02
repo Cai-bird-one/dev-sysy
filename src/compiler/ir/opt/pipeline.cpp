@@ -13,6 +13,7 @@ PassManager buildPerfPipeline() {
   passes.addFunctionPass(std::make_unique<AlgebraicSimplifyPass>());
   passes.addFunctionPass(std::make_unique<GlobalValuePropagationPass>());
   passes.addFunctionPass(std::make_unique<LocalLoadStoreForwardingPass>());
+  passes.addFunctionPass(std::make_unique<GlobalScalarLoadForwardingPass>());
   passes.addFunctionPass(std::make_unique<LocalDeadStoreEliminationPass>());
   passes.addFunctionPass(
       std::make_unique<CommonSubexpressionEliminationPass>());
@@ -21,6 +22,7 @@ PassManager buildPerfPipeline() {
   passes.addFunctionPass(std::make_unique<JumpThreadingPass>());
   passes.addFunctionPass(std::make_unique<UnreachableBlockEliminationPass>());
   passes.addFunctionPass(std::make_unique<DeadCodeEliminationPass>());
+  passes.addFunctionPass(std::make_unique<UnusedAllocEliminationPass>());
   passes.addFunctionPass(std::make_unique<BlockCleanupPass>());
   return passes;
 }

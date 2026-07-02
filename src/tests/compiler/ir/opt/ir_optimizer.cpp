@@ -251,6 +251,80 @@ TEST_CASE(ir_optimizer_removes_dead_local_scalar_stores) {
   EXPECT_TRUE(optimized.find("ret @y") != std::string::npos);
 }
 
+TEST_CASE(ir_optimizer_forwards_scalar_loads_across_basic_blocks) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(@x: i32): i32 {\n"
+                         "%entry:\n"
+                         "  %a = alloc i32\n"
+                         "  store @x, %a\n"
+                         "  jump %next\n"
+                         "%next:\n"
+                         "  %0 = load %a\n"
+                         "  ret %0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%0 = load %a") == std::string::npos);
+  EXPECT_TRUE(optimized.find("ret @x") != std::string::npos);
+}
+
+TEST_CASE(ir_optimizer_forwards_matching_scalar_stores_at_merge) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(@x: i32, @cond: i32): i32 {\n"
+                         "%entry:\n"
+                         "  %a = alloc i32\n"
+                         "  br @cond, %then, %else\n"
+                         "%then:\n"
+                         "  store @x, %a\n"
+                         "  jump %end\n"
+                         "%else:\n"
+                         "  store @x, %a\n"
+                         "  jump %end\n"
+                         "%end:\n"
+                         "  %0 = load %a\n"
+                         "  ret %0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%0 = load %a") == std::string::npos);
+  EXPECT_TRUE(optimized.find("ret @x") != std::string::npos);
+}
+
+TEST_CASE(ir_optimizer_does_not_forward_conflicting_scalar_stores_at_merge) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(@x: i32, @y: i32, @cond: i32): i32 {\n"
+                         "%entry:\n"
+                         "  %a = alloc i32\n"
+                         "  br @cond, %then, %else\n"
+                         "%then:\n"
+                         "  store @x, %a\n"
+                         "  jump %end\n"
+                         "%else:\n"
+                         "  store @y, %a\n"
+                         "  jump %end\n"
+                         "%end:\n"
+                         "  %0 = load %a\n"
+                         "  ret %0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%0 = load %a") != std::string::npos);
+}
+
+TEST_CASE(ir_optimizer_removes_unused_allocs_after_store_elimination) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(@x: i32): i32 {\n"
+                         "%entry:\n"
+                         "  %a = alloc i32\n"
+                         "  store @x, %a\n"
+                         "  ret 0\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%a = alloc i32") == std::string::npos);
+  EXPECT_TRUE(optimized.find("store @x, %a") == std::string::npos);
+}
+
 TEST_CASE(ir_optimizer_keeps_local_stores_across_calls_and_jumps) {
   ir::opt::IrOptimizer optimizer;
   std::string optimized =
@@ -271,6 +345,7 @@ TEST_CASE(ir_optimizer_keeps_local_stores_across_calls_and_jumps) {
                          "}\n");
 
   EXPECT_TRUE(optimized.find("store @x, %a") != std::string::npos);
+  EXPECT_TRUE(optimized.find("%0 = load %a") != std::string::npos);
 }
 
 TEST_CASE(ir_optimizer_output_still_feeds_riscv_generator) {

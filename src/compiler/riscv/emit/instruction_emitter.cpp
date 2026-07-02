@@ -42,6 +42,35 @@ bool powerOfTwoShift(int value, int &shift) {
   return true;
 }
 
+bool parseInteger(const std::string &text, long long &value) {
+  if (!isIntegerLiteral(text)) {
+    return false;
+  }
+  try {
+    value = std::stoll(text);
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+
+bool isZeroLiteral(const std::string &text) {
+  long long value = 0;
+  return parseInteger(text, value) && value == 0;
+}
+
+bool powerOfTwoShift(long long value, int &shift) {
+  if (value <= 0 || (value & (value - 1)) != 0) {
+    return false;
+  }
+  shift = 0;
+  while (value > 1) {
+    value >>= 1;
+    ++shift;
+  }
+  return shift <= 31;
+}
+
 } // namespace
 
 InstructionEmitter::InstructionEmitter(std::string function_name,
@@ -164,6 +193,44 @@ void InstructionEmitter::emitBinary(const std::string &op,
                                     const std::string &right) {
   OperandEmitter operands(frame_, output_);
   if (isComparison(op)) {
+    if (isZeroLiteral(right)) {
+      operands.loadOperand(left, "t0");
+      if (op == "eq") {
+        output_.instruction("seqz t0, t0");
+      } else if (op == "ne") {
+        output_.instruction("snez t0, t0");
+      } else if (op == "lt") {
+        output_.instruction("slt t0, t0, zero");
+      } else if (op == "gt") {
+        output_.instruction("slt t0, zero, t0");
+      } else if (op == "le") {
+        output_.instruction("slt t0, zero, t0");
+        output_.instruction("xori t0, t0, 1");
+      } else if (op == "ge") {
+        output_.instruction("slt t0, t0, zero");
+        output_.instruction("xori t0, t0, 1");
+      }
+      return;
+    }
+    if (isZeroLiteral(left)) {
+      operands.loadOperand(right, "t0");
+      if (op == "eq") {
+        output_.instruction("seqz t0, t0");
+      } else if (op == "ne") {
+        output_.instruction("snez t0, t0");
+      } else if (op == "lt") {
+        output_.instruction("slt t0, zero, t0");
+      } else if (op == "gt") {
+        output_.instruction("slt t0, t0, zero");
+      } else if (op == "le") {
+        output_.instruction("slt t0, t0, zero");
+        output_.instruction("xori t0, t0, 1");
+      } else if (op == "ge") {
+        output_.instruction("slt t0, zero, t0");
+        output_.instruction("xori t0, t0, 1");
+      }
+      return;
+    }
     operands.loadOperand(left, "t0");
     operands.loadOperand(right, "t1");
     emitComparison(op);
@@ -197,6 +264,31 @@ void InstructionEmitter::emitBinary(const std::string &op,
     operands.loadOperand(right, "t0");
     output_.instruction(op + "i t0, t0, " + std::to_string(immediate));
     return;
+  }
+  if (op == "mul") {
+    long long constant = 0;
+    std::string operand;
+    if (parseInteger(right, constant)) {
+      operand = left;
+    } else if (parseInteger(left, constant)) {
+      operand = right;
+    }
+
+    if (!operand.empty()) {
+      if (constant == 0) {
+        output_.loadImmediate("t0", "0");
+        return;
+      }
+      operands.loadOperand(operand, "t0");
+      if (constant == 1) {
+        return;
+      }
+      int shift = 0;
+      if (powerOfTwoShift(constant, shift)) {
+        output_.instruction("slli t0, t0, " + std::to_string(shift));
+        return;
+      }
+    }
   }
   operands.loadOperand(left, "t0");
   operands.loadOperand(right, "t1");

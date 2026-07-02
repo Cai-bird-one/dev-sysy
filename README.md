@@ -39,6 +39,10 @@ make
 ./scripts/dev.sh shell
 ```
 
+## 扩展与优化
+
+本仓库在基础 SysY 编译流程上增加了 tensor 注释扩展，并实现了多项 IR 与 RISC-V 后端优化。Tensor 扩展见 [Tensor 扩展说明](EXTENSION.md)，优化实现见 [优化说明](OPTIMIZATION.md)。
+
 ## 词法分析框架
 
 词法分析模块位于 `src/compiler/lexer` 目录. 词法分析引擎在 `lexer.h` / `lexer.cpp` 中, 具体 token 规则集中写在 `token_rules.h` / `token_rules.cpp` 中.

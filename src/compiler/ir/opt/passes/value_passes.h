@@ -59,7 +59,17 @@ public:
   PassResult run(IrFunction &function) override;
 };
 
+class GlobalScalarLoadForwardingPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
 class LocalDeadStoreEliminationPass : public FunctionPass {
+public:
+  PassResult run(IrFunction &function) override;
+};
+
+class UnusedAllocEliminationPass : public FunctionPass {
 public:
   PassResult run(IrFunction &function) override;
 };
