@@ -3,6 +3,7 @@
 #include "compiler/ir/koopa_generator.h"
 
 #include <cctype>
+#include <limits>
 
 namespace compiler::ir {
 
@@ -147,6 +148,21 @@ std::string arrayType(const std::vector<long long> &dimensions, size_t begin) {
   }
   return "[" + arrayType(dimensions, begin + 1) + ", " +
          std::to_string(dimensions[begin]) + "]";
+}
+
+KoopaTensorShape tensorShapeFromDimensions(
+    const std::vector<long long> &dimensions) {
+  if (dimensions.empty()) {
+    throw IrError("tensor declaration requires at least one dimension");
+  }
+  KoopaTensorShape shape;
+  for (long long dimension : dimensions) {
+    if (dimension <= 0 || dimension > std::numeric_limits<int>::max()) {
+      throw IrError("invalid tensor dimension: " + std::to_string(dimension));
+    }
+    shape.dims.push_back(static_cast<int>(dimension));
+  }
+  return shape;
 }
 
 std::vector<long long> parseArrayTypeDimensions(const std::string &type) {

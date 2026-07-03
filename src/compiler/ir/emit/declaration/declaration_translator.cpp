@@ -1,5 +1,6 @@
 #include "compiler/ir/emit/declaration/declaration_translator.h"
 
+#include "compiler/ir/ast/parse_node_utils.h"
 #include "compiler/ir/koopa_generator.h"
 #include "compiler/ir/sdt/production_rules.h"
 
@@ -20,7 +21,7 @@ DeclarationTranslator::DeclarationTranslator(DeclarationContext &context)
   registerRule("Decl", {"VarDecl"}, &DeclarationTranslator::walkChildren);
   registerRule(
       "ConstDecl", {"CONST", "BType", "ConstDef", "ConstDefList", "SEMICOLON"},
-      &DeclarationTranslator::walkChildren);
+      &DeclarationTranslator::emitConstDeclaration);
   registerRule("ConstDefList", {"COMMA", "ConstDef", "ConstDefList"},
                &DeclarationTranslator::walkChildren);
   registerRule("ConstDefList", {}, &DeclarationTranslator::ignoreNode);
@@ -28,7 +29,7 @@ DeclarationTranslator::DeclarationTranslator(DeclarationContext &context)
                {"IDENT", "ConstArrayDims", "ASSIGN", "ConstInitVal"},
                &DeclarationTranslator::emitConstDefinitionNode);
   registerRule("VarDecl", {"BType", "VarDef", "VarDefList", "SEMICOLON"},
-               &DeclarationTranslator::walkChildren);
+               &DeclarationTranslator::emitVarDeclaration);
   registerRule("VarDefList", {"COMMA", "VarDef", "VarDefList"},
                &DeclarationTranslator::walkChildren);
   registerRule("VarDefList", {}, &DeclarationTranslator::ignoreNode);
@@ -57,14 +58,58 @@ void DeclarationTranslator::walkChildren(
   }
 }
 
+void DeclarationTranslator::emitConstDeclaration(
+    const compiler::parser::ParseNode &node) const {
+  if (node.children.size() != 5) {
+    throw IrError("invalid ConstDecl node");
+  }
+  SourceValueType type = parseBType(*node.children[1]);
+  context_.emitConstDefinition(*node.children[2], type);
+  emitConstDefinitionList(*node.children[3], type);
+}
+
+void DeclarationTranslator::emitVarDeclaration(
+    const compiler::parser::ParseNode &node) const {
+  if (node.children.size() != 4) {
+    throw IrError("invalid VarDecl node");
+  }
+  SourceValueType type = parseBType(*node.children[0]);
+  context_.emitVarDefinition(*node.children[1], type);
+  emitVarDefinitionList(*node.children[2], type);
+}
+
 void DeclarationTranslator::emitConstDefinitionNode(
     const compiler::parser::ParseNode &node) const {
-  context_.emitConstDefinition(node);
+  context_.emitConstDefinition(node, SourceValueType::Int);
 }
 
 void DeclarationTranslator::emitVarDefinitionNode(
     const compiler::parser::ParseNode &node) const {
-  context_.emitVarDefinition(node);
+  context_.emitVarDefinition(node, SourceValueType::Int);
+}
+
+void DeclarationTranslator::emitConstDefinitionList(
+    const compiler::parser::ParseNode &node, SourceValueType type) const {
+  if (node.children.empty()) {
+    return;
+  }
+  if (node.children.size() != 3) {
+    throw IrError("invalid ConstDefList node");
+  }
+  context_.emitConstDefinition(*node.children[1], type);
+  emitConstDefinitionList(*node.children[2], type);
+}
+
+void DeclarationTranslator::emitVarDefinitionList(
+    const compiler::parser::ParseNode &node, SourceValueType type) const {
+  if (node.children.empty()) {
+    return;
+  }
+  if (node.children.size() != 3) {
+    throw IrError("invalid VarDefList node");
+  }
+  context_.emitVarDefinition(*node.children[1], type);
+  emitVarDefinitionList(*node.children[2], type);
 }
 
 void DeclarationTranslator::ignoreNode(

@@ -8,6 +8,7 @@ namespace compiler::ir::opt {
 
 PassManager buildPerfPipeline() {
   PassManager passes;
+  passes.addModulePass(std::make_unique<TensorDialectOptimizationPass>());
   passes.addModulePass(std::make_unique<UnusedFunctionEliminationPass>());
   passes.addFunctionPass(std::make_unique<ConstantFoldingPass>());
   passes.addFunctionPass(std::make_unique<AlgebraicSimplifyPass>());

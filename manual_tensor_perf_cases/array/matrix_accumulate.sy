@@ -1,0 +1,44 @@
+int main() {
+  int a[12][12];
+  int b[12][12];
+  int c[12][12];
+
+  int i = 0;
+  while (i < 12) {
+    int j = 0;
+    while (j < 12) {
+      a[i][j] = (i * 17 + j * 13 + 5) % 97;
+      b[i][j] = (i * 19 + j * 11 + 7) % 89;
+      c[i][j] = 0;
+      j = j + 1;
+    }
+    i = i + 1;
+  }
+
+  int rep = 0;
+  int checksum = 0;
+  starttime();
+  while (rep < 2200) {
+    i = 0;
+    while (i < 12) {
+      int j = 0;
+      while (j < 12) {
+        int k = 0;
+        int sum = 0;
+        while (k < 12) {
+          sum = sum + a[i][k] * b[k][j];
+          k = k + 1;
+        }
+        sum = (sum + rep + c[i][j]) % 1000003;
+        c[i][j] = sum;
+        checksum = (checksum + sum + i * 3 + j) % 1000003;
+        j = j + 1;
+      }
+      i = i + 1;
+    }
+    rep = rep + 1;
+  }
+  stoptime();
+
+  return checksum % 256;
+}

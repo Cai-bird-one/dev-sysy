@@ -2,6 +2,7 @@
 
 #include "compiler/ir/emit/declaration/declaration_translator.h"
 #include "compiler/ir/emit/expression/constant_expression.h"
+#include "compiler/ir/tensor/koopa_tensor_ir.h"
 #include "compiler/ir/koopa_generator.h"
 #include "compiler/ir/util/ir_utils.h"
 
@@ -14,23 +15,31 @@ void ProgramBuilder::collectDeclaration(
 }
 
 void ProgramBuilder::emitConstDefinition(
-    const compiler::parser::ParseNode &node) {
+    const compiler::parser::ParseNode &node, SourceValueType type) {
   if (node.children.size() != 4 || node.children[0]->symbol != "IDENT") {
     throw IrError("invalid ConstDef node");
   }
   std::vector<long long> dimensions =
       collectGlobalArrayDimensions(*node.children[1]);
+  if (type == SourceValueType::Tensor && dimensions.empty()) {
+    throw IrError("tensor declaration requires at least one dimension: " +
+                  node.children[0]->lexeme);
+  }
   if (!dimensions.empty()) {
     std::string pointer = newGlobalValue(node.children[0]->lexeme);
     std::vector<long long> values(elementCount(dimensions), 0);
     fillGlobalInitializer(*node.children[3], dimensions, 0, 0, values);
+    if (type == SourceValueType::Tensor) {
+      context_.addGlobalInstruction(
+          formatTensorShapeDecl(pointer, tensorShapeFromDimensions(dimensions)));
+    }
     context_.addGlobalInstruction("global " + pointer + " = alloc " +
                                   arrayType(dimensions) + ", " +
                                   formatArrayInitializer(values, dimensions, 0,
                                                          0));
     defineGlobal(node.children[0]->lexeme,
                  Symbol{SymbolKind::Variable, 0, pointer, dimensions, false,
-                        false});
+                        false, type});
     return;
   }
   long long value =
@@ -40,7 +49,7 @@ void ProgramBuilder::emitConstDefinition(
 }
 
 void ProgramBuilder::emitVarDefinition(
-    const compiler::parser::ParseNode &node) {
+    const compiler::parser::ParseNode &node, SourceValueType type) {
   if (node.children.size() < 2 || node.children[0]->symbol != "IDENT") {
     throw IrError("invalid VarDef node");
   }
@@ -48,9 +57,17 @@ void ProgramBuilder::emitVarDefinition(
   bool has_initializer = false;
   std::vector<long long> dimensions =
       collectGlobalArrayDimensions(*node.children[1]);
+  if (type == SourceValueType::Tensor && dimensions.empty()) {
+    throw IrError("tensor declaration requires at least one dimension: " +
+                  node.children[0]->lexeme);
+  }
   if (!dimensions.empty()) {
     std::string pointer = newGlobalValue(node.children[0]->lexeme);
     std::vector<long long> values(elementCount(dimensions), 0);
+    if (type == SourceValueType::Tensor) {
+      context_.addGlobalInstruction(
+          formatTensorShapeDecl(pointer, tensorShapeFromDimensions(dimensions)));
+    }
     if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
       fillGlobalInitializer(*node.children[2]->children[1], dimensions, 0, 0,
                             values);
@@ -64,7 +81,7 @@ void ProgramBuilder::emitVarDefinition(
     }
     defineGlobal(node.children[0]->lexeme,
                  Symbol{SymbolKind::Variable, 0, pointer, dimensions, true,
-                        false});
+                        false, type});
     return;
   }
   if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
@@ -77,7 +94,7 @@ void ProgramBuilder::emitVarDefinition(
                                 (has_initializer ? std::to_string(value)
                                                  : "zeroinit"));
   defineGlobal(node.children[0]->lexeme,
-               Symbol{SymbolKind::Variable, 0, pointer, {}, true, false});
+               Symbol{SymbolKind::Variable, 0, pointer, {}, true, false, type});
 }
 
 Value ProgramBuilder::emitGlobalExpression(

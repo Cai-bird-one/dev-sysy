@@ -1,11 +1,3 @@
-# 基于 Makefile 的 SysY 编译器项目模板
-
-该仓库中存放了一个基于 Makefile 的 SysY 编译器项目的模板, 你可以在该模板的基础上进行进一步的开发.
-
-该仓库中的 C/C++ 代码实现仅作为演示, 不代表你的编译器必须以此方式实现. 如你需要使用该模板, 建议你删掉所有 C/C++ 源文件, 仅保留 `Makefile` 和必要的目录结构, 然后重新开始实现.
-
-该模板仅供不熟悉 Makefile 的同学参考, 在理解基本原理的基础上, 你完全可以不使用模板完成编译器的实现. 如你决定不使用该模板并自行编写 Makefile, 请参考 [“评测平台要求”](#评测平台要求) 部分.
-
 ## 使用方法
 
 首先 clone 本仓库:
@@ -39,9 +31,9 @@ make
 ./scripts/dev.sh shell
 ```
 
-## 扩展与优化
+## Tensor IR 与优化
 
-本仓库在基础 SysY 编译流程上增加了 tensor 注释扩展，并实现了多项 IR 与 RISC-V 后端优化。Tensor 扩展见 [Tensor 扩展说明](EXTENSION.md)，优化实现见 [优化说明](OPTIMIZATION.md)。
+本仓库在基础 SysY 编译流程上增加了 Koopa tensor IR dialect，并实现了多项 IR 与 RISC-V 后端优化。Tensor IR 见 [Tensor IR 说明](EXTENSION.md)，优化实现见 [优化说明](OPTIMIZATION.md)。
 
 ## 词法分析框架
 
@@ -133,17 +125,6 @@ int main() {
   return 0;
 }
 ```
-
-如在此基础上进行开发, 你需要重新初始化 Git 仓库:
-
-```sh
-rm -rf .git
-git init
-```
-
-然后, 根据情况修改 `Makefile` 中的 `CPP_MODE` 参数. 如果你决定使用 C 语言进行开发, 你应该将其值改为 `0`.
-
-最后, 将自己的编译器的源文件放入 `src` 目录.
 
 ## 测试要求
 

@@ -6,6 +6,10 @@ namespace compiler::ir::opt {
 
 std::string KoopaIrWriter::write(const IrModule &module) const {
   std::ostringstream output;
+  std::string tensor_dialect = formatTensorInfo(module.tensor);
+  if (!tensor_dialect.empty()) {
+    output << tensor_dialect << '\n';
+  }
   for (const std::string &global : module.globals) {
     output << global << '\n';
   }

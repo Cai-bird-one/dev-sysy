@@ -21,22 +21,31 @@ void FunctionBuilder::collectParameters() {
     if (ident == nullptr || ident->lexeme.empty()) {
       throw IrError("invalid function parameter");
     }
+    const compiler::parser::ParseNode *btype = findDirectChild(*param, "BType");
+    if (btype == nullptr) {
+      throw IrError("function parameter is missing a basic type");
+    }
+    SourceValueType source_type = parseBType(*btype);
     std::string koopa_name = body_emitter_.newParameterValue(ident->lexeme);
     std::vector<long long> dimensions =
         collectFunctionParameterDimensions(*param);
     if (!dimensions.empty() || hasNonEmptyChild(*param, "FuncFParamArrayOpt")) {
-      std::string type = "*" + arrayType(dimensions);
+      std::string parameter_type = "*" + arrayType(dimensions);
       body_emitter_.define(ident->lexeme,
                            Symbol{SymbolKind::Variable, 0, koopa_name,
-                                  dimensions, true, true});
-      parameters_.push_back(Parameter{ident->lexeme, koopa_name, "", type});
+                                  dimensions, true, true, source_type});
+      parameters_.push_back(
+          Parameter{ident->lexeme, koopa_name, "", parameter_type});
       continue;
+    }
+    if (source_type == SourceValueType::Tensor) {
+      throw IrError("tensor function parameter requires array dimensions");
     }
     std::string pointer = body_emitter_.newNamedValue(ident->lexeme);
     body_emitter_.emitLocalAlloc(pointer + " = alloc i32");
     body_emitter_.define(
         ident->lexeme, Symbol{SymbolKind::Variable, 0, pointer, {}, true,
-                              false});
+                              false, source_type});
     parameters_.push_back(Parameter{ident->lexeme, koopa_name, pointer, "i32"});
   }
 }

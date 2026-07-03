@@ -57,6 +57,13 @@ private:
   parseSymbol(const std::string &symbol,
               const std::vector<compiler::lexer::Token> &tokens,
               size_t &input_pos) const;
+  std::unique_ptr<ParseNode>
+  parseFlatRightRecursiveList(const std::string &symbol,
+                              const std::vector<std::string> &item_symbols,
+                              const std::vector<compiler::lexer::Token> &tokens,
+                              size_t &input_pos) const;
+  int findProductionId(const std::string &lhs,
+                       const std::vector<std::string> &rhs) const;
   void rememberError(size_t input_pos, const std::string &message) const;
 
   Grammar grammar_;

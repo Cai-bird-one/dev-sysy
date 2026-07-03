@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compiler/ir/tensor/koopa_tensor_ir.h"
 #include "compiler/ir/model/ir_model.h"
 
 #include <cstddef>
@@ -21,6 +22,8 @@ long long elementCount(const std::vector<long long> &dimensions,
                        size_t begin = 0);
 std::string arrayType(const std::vector<long long> &dimensions,
                       size_t begin = 0);
+KoopaTensorShape tensorShapeFromDimensions(
+    const std::vector<long long> &dimensions);
 std::vector<long long> parseArrayTypeDimensions(const std::string &type);
 std::vector<long long> parsePointerTypeDimensions(const std::string &type);
 

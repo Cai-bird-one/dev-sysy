@@ -47,12 +47,14 @@ private:
   void pushScope();
   void popScope();
 
-  void emitConstDefinition(const compiler::parser::ParseNode &node) override;
-  void emitVarDefinition(const compiler::parser::ParseNode &node) override;
+  void emitConstDefinition(const compiler::parser::ParseNode &node,
+                           SourceValueType type) override;
+  void emitVarDefinition(const compiler::parser::ParseNode &node,
+                         SourceValueType type) override;
   void collectLocalArrayDef(const std::string &name,
                             const std::vector<long long> &dimensions,
                             const compiler::parser::ParseNode *initializer,
-                            bool assignable);
+                            bool assignable, SourceValueType type);
 
   Value emitCall(const compiler::parser::ParseNode &node) override;
   void collectCallArgumentNodes(

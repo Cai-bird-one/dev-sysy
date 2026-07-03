@@ -113,24 +113,25 @@ TEST_CASE(token_rules_reject_invalid_integer_literals) {
 TEST_CASE(token_rules_tokenize_sysy_keywords_and_operators) {
   Lexer lexer = buildDefaultLexer();
   std::istringstream input(
-      "void if else while break continue <= >= == != && || []");
+      "void tensor if else while break continue <= >= == != && || []");
   std::vector<Token> tokens = lexer.tokenize(input);
 
-  EXPECT_EQ(tokens.size(), 14u);
+  EXPECT_EQ(tokens.size(), 15u);
   EXPECT_EQ(tokens[0].name, "VOID");
-  EXPECT_EQ(tokens[1].name, "IF");
-  EXPECT_EQ(tokens[2].name, "ELSE");
-  EXPECT_EQ(tokens[3].name, "WHILE");
-  EXPECT_EQ(tokens[4].name, "BREAK");
-  EXPECT_EQ(tokens[5].name, "CONTINUE");
-  EXPECT_EQ(tokens[6].name, "LE");
-  EXPECT_EQ(tokens[7].name, "GE");
-  EXPECT_EQ(tokens[8].name, "EQ");
-  EXPECT_EQ(tokens[9].name, "NE");
-  EXPECT_EQ(tokens[10].name, "AND");
-  EXPECT_EQ(tokens[11].name, "OR");
-  EXPECT_EQ(tokens[12].name, "LBRACKET");
-  EXPECT_EQ(tokens[13].name, "RBRACKET");
+  EXPECT_EQ(tokens[1].name, "TENSOR");
+  EXPECT_EQ(tokens[2].name, "IF");
+  EXPECT_EQ(tokens[3].name, "ELSE");
+  EXPECT_EQ(tokens[4].name, "WHILE");
+  EXPECT_EQ(tokens[5].name, "BREAK");
+  EXPECT_EQ(tokens[6].name, "CONTINUE");
+  EXPECT_EQ(tokens[7].name, "LE");
+  EXPECT_EQ(tokens[8].name, "GE");
+  EXPECT_EQ(tokens[9].name, "EQ");
+  EXPECT_EQ(tokens[10].name, "NE");
+  EXPECT_EQ(tokens[11].name, "AND");
+  EXPECT_EQ(tokens[12].name, "OR");
+  EXPECT_EQ(tokens[13].name, "LBRACKET");
+  EXPECT_EQ(tokens[14].name, "RBRACKET");
 }
 
 TEST_CASE(token_rules_fallback_matches_single_character) {

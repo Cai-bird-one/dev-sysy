@@ -12,6 +12,11 @@ enum class SymbolKind {
   Variable,
 };
 
+enum class SourceValueType {
+  Int,
+  Tensor,
+};
+
 struct Symbol {
   SymbolKind kind = SymbolKind::Constant;
   long long const_value = 0;
@@ -19,6 +24,7 @@ struct Symbol {
   std::vector<long long> dimensions;
   bool assignable = false;
   bool pointer_parameter = false;
+  SourceValueType type = SourceValueType::Int;
 };
 
 struct FunctionSignature {

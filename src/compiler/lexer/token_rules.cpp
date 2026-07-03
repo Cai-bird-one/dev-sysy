@@ -14,6 +14,7 @@ const std::vector<RegexTokenRule> kDefaultRegexTokenRules = {
     {"CONST", "const"},
     {"VOID", "void"},
     {"INT", "int"},
+    {"TENSOR", "tensor"},
     {"IF", "if"},
     {"ELSE", "else"},
     {"WHILE", "while"},

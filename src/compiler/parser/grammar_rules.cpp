@@ -20,6 +20,7 @@ const Grammar kDefaultGrammar = {
         {"ConstDecl",
          {"CONST", "BType", "ConstDef", "ConstDefList", "SEMICOLON"}},
         {"BType", {"INT"}},
+        {"BType", {"TENSOR"}},
         {"ConstDefList", {"COMMA", "ConstDef", "ConstDefList"}},
         {"ConstDefList", {}},
         {"ConstDef", {"IDENT", "ConstArrayDims", "ASSIGN", "ConstInitVal"}},

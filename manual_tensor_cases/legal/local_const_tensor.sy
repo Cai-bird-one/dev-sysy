@@ -1,0 +1,5 @@
+int main() {
+  const tensor c[1][4] = {1, 2, 3, 4};
+  tensor x[1][4] = {5, 6, 7, 8};
+  return c[0][2] + x[0][3];
+}

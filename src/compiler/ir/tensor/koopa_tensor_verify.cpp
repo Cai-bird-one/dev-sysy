@@ -1,4 +1,4 @@
-#include "compiler/ir/koopa_tensor_extension_internal.h"
+#include "compiler/ir/tensor/koopa_tensor_verify.h"
 
 namespace compiler::ir {
 namespace {
@@ -41,28 +41,38 @@ void verifyTensorOperation(const KoopaTensorInfo &info,
             tensorOpKindName(operation.kind) + " operand count mismatch");
   };
 
-  if (operation.kind == KoopaTensorOpKind::Matmul ||
-      operation.kind == KoopaTensorOpKind::MatmulBiasRelu) {
-    arity(operation.kind == KoopaTensorOpKind::Matmul ? 2 : 3);
-    if (operation.kind == KoopaTensorOpKind::MatmulBiasRelu) {
+  if (isTensorMatmulKind(operation.kind)) {
+    bool has_bias = tensorMatmulHasBias(operation.kind);
+    arity(has_bias ? 3 : 2);
+    if (has_bias) {
       require(canBroadcastTo(knownShape(info, operation.operands[2]),
                              operation.shape),
-              "tensor.matmul_bias_relu bias shape is not compatible");
+              tensorOpKindName(operation.kind) +
+                  " bias shape is not compatible");
     }
     KoopaTensorShape lhs = knownShape(info, operation.operands[0]);
     KoopaTensorShape rhs = knownShape(info, operation.operands[1]);
     require(lhs.dims.size() == 2 && rhs.dims.size() == 2,
             tensorOpKindName(operation.kind) + " expects rank-2 matrix operands");
-    require(lhs.dims[1] == rhs.dims[0],
+    int lhs_rows = tensorMatmulTransposesLhs(operation.kind) ? lhs.dims[1]
+                                                            : lhs.dims[0];
+    int lhs_cols = tensorMatmulTransposesLhs(operation.kind) ? lhs.dims[0]
+                                                            : lhs.dims[1];
+    int rhs_rows = tensorMatmulTransposesRhs(operation.kind) ? rhs.dims[1]
+                                                            : rhs.dims[0];
+    int rhs_cols = tensorMatmulTransposesRhs(operation.kind) ? rhs.dims[0]
+                                                            : rhs.dims[1];
+    require(lhs_cols == rhs_rows,
             tensorOpKindName(operation.kind) + " inner dimensions do not match");
-    require(operation.shape == KoopaTensorShape{{lhs.dims[0], rhs.dims[1]}},
+    require(operation.shape == KoopaTensorShape{{lhs_rows, rhs_cols}},
             tensorOpKindName(operation.kind) + " result shape mismatch");
-  } else if (operation.kind == KoopaTensorOpKind::Add) {
+  } else if (operation.kind == KoopaTensorOpKind::Add ||
+             operation.kind == KoopaTensorOpKind::AddRelu) {
     arity(2);
     KoopaTensorShape lhs = knownShape(info, operation.operands[0]);
     KoopaTensorShape rhs = knownShape(info, operation.operands[1]);
     require(lhs == rhs && operation.shape == lhs,
-            "tensor.add requires identical shapes");
+            tensorOpKindName(operation.kind) + " requires identical shapes");
   } else if (operation.kind == KoopaTensorOpKind::Reshape) {
     arity(1);
     KoopaTensorShape input = knownShape(info, operation.operands[0]);

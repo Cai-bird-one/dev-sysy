@@ -1,0 +1,4 @@
+int main() {
+  tensor x[0];
+  return 0;
+}

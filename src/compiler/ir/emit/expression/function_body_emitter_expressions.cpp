@@ -78,11 +78,19 @@ void FunctionBodyEmitter::collectCallArgumentNodes(
     if (node.children.empty()) {
       return;
     }
-    if (node.children.size() != 3) {
-      throw IrError("invalid FuncRParamsTail node");
+    for (size_t i = 0; i < node.children.size();) {
+      if (i + 1 >= node.children.size() ||
+          node.children[i]->symbol != "COMMA") {
+        throw IrError("invalid FuncRParamsTail node");
+      }
+      args.push_back(node.children[i + 1].get());
+      i += 2;
+      if (i < node.children.size() &&
+          node.children[i]->symbol == "FuncRParamsTail") {
+        collectCallArgumentNodes(*node.children[i], args);
+        ++i;
+      }
     }
-    args.push_back(node.children[1].get());
-    collectCallArgumentNodes(*node.children[2], args);
     return;
   }
   throw IrError("invalid function argument node: " + node.symbol);

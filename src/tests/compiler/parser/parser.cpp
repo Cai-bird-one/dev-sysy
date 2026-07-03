@@ -89,6 +89,21 @@ TEST_CASE(parser_accepts_trailing_commas_in_initializer_lists) {
   EXPECT_EQ(tree->symbol, "CompUnit");
 }
 
+TEST_CASE(parser_parses_tensor_declarations_as_basic_type) {
+  Lexer lexer = buildDefaultLexer();
+  Parser parser = buildDefaultParser();
+  std::istringstream input(
+      "tensor g[2][3]; int main() { tensor x[2][3]; return 0; }");
+
+  std::unique_ptr<ParseNode> tree = parser.parse(lexer.tokenize(input));
+  std::ostringstream output;
+  printParseTree(*tree, output);
+
+  EXPECT_EQ(tree->symbol, "CompUnit");
+  EXPECT_TRUE(output.str().find("BType") != std::string::npos);
+  EXPECT_TRUE(output.str().find("TENSOR \"tensor\"") != std::string::npos);
+}
+
 TEST_CASE(parser_rejects_unexpected_token) {
   std::vector<Token> tokens = {
       {"RETURN", "return"},

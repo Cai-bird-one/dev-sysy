@@ -89,9 +89,17 @@ std::vector<std::string> FunctionSemanticCollector::collectFunctionParameterType
   collectNodes(*params_opt, "FuncFParam", params);
   std::vector<std::string> types;
   for (const compiler::parser::ParseNode *param : params) {
+    const compiler::parser::ParseNode *btype = findDirectChild(*param, "BType");
+    if (btype == nullptr) {
+      throw IrError("function parameter is missing a basic type");
+    }
+    SourceValueType type = parseBType(*btype);
     const compiler::parser::ParseNode *array_opt =
         findDirectChild(*param, "FuncFParamArrayOpt");
     if (array_opt == nullptr || array_opt->children.empty()) {
+      if (type == SourceValueType::Tensor) {
+        throw IrError("tensor function parameter requires array dimensions");
+      }
       types.push_back("i32");
       continue;
     }

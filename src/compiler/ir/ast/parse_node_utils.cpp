@@ -67,4 +67,18 @@ std::string findFunctionReturnType(const compiler::parser::ParseNode &function) 
   return "i32";
 }
 
+SourceValueType parseBType(const compiler::parser::ParseNode &type) {
+  if (type.symbol == "TENSOR") {
+    return SourceValueType::Tensor;
+  }
+  if (type.symbol == "INT") {
+    return SourceValueType::Int;
+  }
+  const compiler::parser::ParseNode *tensor = findDirectChild(type, "TENSOR");
+  if (tensor != nullptr) {
+    return SourceValueType::Tensor;
+  }
+  return SourceValueType::Int;
+}
+
 } // namespace compiler::ir

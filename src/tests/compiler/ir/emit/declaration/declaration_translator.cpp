@@ -36,19 +36,24 @@ std::unique_ptr<parser::ParseNode> emptyVarDefList() {
 
 class TestDeclarationContext : public ir::DeclarationContext {
 public:
-  void emitConstDefinition(const parser::ParseNode &node) override {
+  void emitConstDefinition(const parser::ParseNode &node,
+                           ir::SourceValueType type) override {
     ++const_defs;
     last_name = node.children[0]->lexeme;
+    last_type = type;
   }
 
-  void emitVarDefinition(const parser::ParseNode &node) override {
+  void emitVarDefinition(const parser::ParseNode &node,
+                         ir::SourceValueType type) override {
     ++var_defs;
     last_name = node.children[0]->lexeme;
+    last_type = type;
   }
 
   int const_defs = 0;
   int var_defs = 0;
   std::string last_name;
+  ir::SourceValueType last_type = ir::SourceValueType::Int;
 };
 
 } // namespace
@@ -77,6 +82,7 @@ TEST_CASE(declaration_translator_walks_const_declaration) {
   EXPECT_EQ(context.const_defs, 1);
   EXPECT_EQ(context.var_defs, 0);
   EXPECT_EQ(context.last_name, "answer");
+  EXPECT_TRUE(context.last_type == ir::SourceValueType::Int);
 }
 
 TEST_CASE(declaration_translator_walks_var_declaration) {
@@ -99,4 +105,30 @@ TEST_CASE(declaration_translator_walks_var_declaration) {
   EXPECT_EQ(context.const_defs, 0);
   EXPECT_EQ(context.var_defs, 1);
   EXPECT_EQ(context.last_name, "value");
+  EXPECT_TRUE(context.last_type == ir::SourceValueType::Int);
+}
+
+TEST_CASE(declaration_translator_passes_tensor_basic_type) {
+  auto var_def = node("VarDef", {"IDENT", "ConstArrayDims", "VarDefInitOpt"});
+  var_def->children.push_back(terminal("IDENT", "matrix"));
+  var_def->children.push_back(emptyConstArrayDims());
+  var_def->children.push_back(terminal("VarDefInitOpt"));
+
+  auto btype = node("BType", {"TENSOR"});
+  btype->children.push_back(terminal("TENSOR", "tensor"));
+
+  auto var_decl = node("VarDecl", {"BType", "VarDef", "VarDefList",
+                                   "SEMICOLON"});
+  var_decl->children.push_back(std::move(btype));
+  var_decl->children.push_back(std::move(var_def));
+  var_decl->children.push_back(emptyVarDefList());
+  var_decl->children.push_back(terminal("SEMICOLON", ";"));
+
+  TestDeclarationContext context;
+  ir::DeclarationTranslator translator(context);
+  translator.translate(*var_decl);
+
+  EXPECT_EQ(context.var_defs, 1);
+  EXPECT_EQ(context.last_name, "matrix");
+  EXPECT_TRUE(context.last_type == ir::SourceValueType::Tensor);
 }

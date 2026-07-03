@@ -1,6 +1,7 @@
 #include "compiler/ir/emit/function/function_body_emitter.h"
 
 #include "compiler/ir/emit/declaration/declaration_translator.h"
+#include "compiler/ir/tensor/koopa_tensor_ir.h"
 #include "compiler/ir/koopa_generator.h"
 #include "compiler/ir/util/ir_utils.h"
 
@@ -15,14 +16,23 @@ void FunctionBodyEmitter::collectDeclaration(
 }
 
 void FunctionBodyEmitter::emitConstDefinition(
-    const compiler::parser::ParseNode &node) {
+    const compiler::parser::ParseNode &node, SourceValueType type) {
   if (node.children.size() != 4 || node.children[0]->symbol != "IDENT") {
     throw IrError("invalid ConstDef node");
   }
   std::vector<long long> dimensions = collectArrayDimensions(*node.children[1]);
+  if (type == SourceValueType::Tensor) {
+    if (dimensions.empty()) {
+      throw IrError("tensor declaration requires at least one dimension: " +
+                    node.children[0]->lexeme);
+    }
+    collectLocalArrayDef(node.children[0]->lexeme, dimensions,
+                         node.children[3].get(), false, type);
+    return;
+  }
   if (!dimensions.empty()) {
     collectLocalArrayDef(node.children[0]->lexeme, dimensions,
-                         node.children[3].get(), false);
+                         node.children[3].get(), false, type);
     return;
   }
   long long value =
@@ -32,18 +42,21 @@ void FunctionBodyEmitter::emitConstDefinition(
 }
 
 void FunctionBodyEmitter::emitVarDefinition(
-    const compiler::parser::ParseNode &node) {
+    const compiler::parser::ParseNode &node, SourceValueType type) {
   if (node.children.size() < 2 || node.children[0]->symbol != "IDENT") {
     throw IrError("invalid VarDef node");
   }
   const std::string &name = node.children[0]->lexeme;
   std::vector<long long> dimensions = collectArrayDimensions(*node.children[1]);
+  if (type == SourceValueType::Tensor && dimensions.empty()) {
+    throw IrError("tensor declaration requires at least one dimension: " + name);
+  }
   if (!dimensions.empty()) {
     const compiler::parser::ParseNode *initializer = nullptr;
     if (node.children.size() >= 3 && !node.children[2]->children.empty()) {
       initializer = node.children[2]->children[1].get();
     }
-    collectLocalArrayDef(name, dimensions, initializer, true);
+    collectLocalArrayDef(name, dimensions, initializer, true, type);
     return;
   }
 
@@ -56,17 +69,21 @@ void FunctionBodyEmitter::emitVarDefinition(
   } else {
     initial_value = makeConstant(0);
   }
-  define(name, Symbol{SymbolKind::Variable, 0, pointer, {}, true, false});
+  define(name, Symbol{SymbolKind::Variable, 0, pointer, {}, true, false, type});
   emit("store " + initial_value.operand + ", " + pointer);
 }
 
 void FunctionBodyEmitter::collectLocalArrayDef(
     const std::string &name, const std::vector<long long> &dimensions,
-    const compiler::parser::ParseNode *initializer, bool assignable) {
+    const compiler::parser::ParseNode *initializer, bool assignable,
+    SourceValueType type) {
   std::string pointer = newNamedValue(name);
   emitLocalAlloc(pointer + " = alloc " + arrayType(dimensions));
   define(name, Symbol{SymbolKind::Variable, 0, pointer, dimensions, assignable,
-                      false});
+                      false, type});
+  if (type == SourceValueType::Tensor) {
+    emit(formatTensorShapeDecl(pointer, tensorShapeFromDimensions(dimensions)));
+  }
 
   if (initializer == nullptr) {
     return;

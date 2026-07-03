@@ -19,8 +19,10 @@ public:
 private:
   void collectGlobalDeclarations(const compiler::parser::ParseNode &node);
   void collectDeclaration(const compiler::parser::ParseNode &node);
-  void emitConstDefinition(const compiler::parser::ParseNode &node) override;
-  void emitVarDefinition(const compiler::parser::ParseNode &node) override;
+  void emitConstDefinition(const compiler::parser::ParseNode &node,
+                           SourceValueType type) override;
+  void emitVarDefinition(const compiler::parser::ParseNode &node,
+                         SourceValueType type) override;
   Value emitGlobalExpression(const compiler::parser::ParseNode &node);
   std::vector<long long>
   collectGlobalArrayDimensions(const compiler::parser::ParseNode &node);

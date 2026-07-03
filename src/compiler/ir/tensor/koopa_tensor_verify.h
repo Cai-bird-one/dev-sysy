@@ -1,6 +1,6 @@
 #pragma once
 
-#include "compiler/ir/koopa_tensor_extension.h"
+#include "compiler/ir/tensor/koopa_tensor_ir.h"
 
 namespace compiler::ir {
 

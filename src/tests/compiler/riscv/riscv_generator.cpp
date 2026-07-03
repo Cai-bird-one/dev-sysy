@@ -146,6 +146,55 @@ TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
   EXPECT_TRUE(riscv.find("slli t1, t1, 2") != std::string::npos);
 }
 
+TEST_CASE(riscv_generator_keeps_plain_array_transpose_generic) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(
+      "fun @transpose(@n: i32, @A: *[i32, 1024], @B: *[i32, 1024]) {\n"
+      "%entry:\n"
+      "  %i = alloc i32\n"
+      "  %j = alloc i32\n"
+      "  store 0, %i\n"
+      "  jump %outer\n"
+      "%outer:\n"
+      "  %0 = load %i\n"
+      "  %1 = lt %0, @n\n"
+      "  br %1, %outer_body, %end\n"
+      "%outer_body:\n"
+      "  store 0, %j\n"
+      "  jump %inner\n"
+      "%inner:\n"
+      "  %2 = load %j\n"
+      "  %3 = lt %2, @n\n"
+      "  br %3, %inner_body, %next_outer\n"
+      "%inner_body:\n"
+      "  %4 = load %i\n"
+      "  %5 = load %j\n"
+      "  %6 = getptr @B, %4\n"
+      "  %7 = getelemptr %6, %5\n"
+      "  %8 = load %j\n"
+      "  %9 = load %i\n"
+      "  %10 = getptr @A, %8\n"
+      "  %11 = getelemptr %10, %9\n"
+      "  %12 = load %11\n"
+      "  store %12, %7\n"
+      "  %13 = add %5, 1\n"
+      "  store %13, %j\n"
+      "  jump %inner\n"
+      "%next_outer:\n"
+      "  %14 = load %i\n"
+      "  %15 = add %14, 1\n"
+      "  store %15, %i\n"
+      "  jump %outer\n"
+      "%end:\n"
+      "  ret\n"
+      "}\n");
+
+  EXPECT_TRUE(riscv.find("transpose_matrix_") == std::string::npos);
+  EXPECT_TRUE(riscv.find("transpose_outer:") != std::string::npos);
+  EXPECT_TRUE(riscv.find("transpose_inner:") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi sp, sp") != std::string::npos);
+}
+
 TEST_CASE(riscv_generator_handles_comparisons) {
   riscv::RiscvGenerator generator;
   std::string riscv = generator.generate("fun @main(): i32 {\n"

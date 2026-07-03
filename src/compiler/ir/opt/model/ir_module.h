@@ -1,5 +1,7 @@
 #pragma once
 
+#include "compiler/ir/tensor/koopa_tensor_ir.h"
+
 #include <string>
 #include <vector>
 
@@ -11,6 +13,7 @@ struct IrFunction {
 };
 
 struct IrModule {
+  KoopaTensorInfo tensor;
   std::vector<std::string> globals;
   std::vector<IrFunction> functions;
 };

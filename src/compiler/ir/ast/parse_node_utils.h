@@ -1,6 +1,7 @@
 #pragma once
 
 #include "compiler/parser/parser.h"
+#include "compiler/ir/model/ir_model.h"
 
 #include <string>
 #include <vector>
@@ -23,5 +24,6 @@ bool hasNonEmptyChild(const compiler::parser::ParseNode &node,
 
 std::string findFunctionName(const compiler::parser::ParseNode &function);
 std::string findFunctionReturnType(const compiler::parser::ParseNode &function);
+SourceValueType parseBType(const compiler::parser::ParseNode &type);
 
 } // namespace compiler::ir

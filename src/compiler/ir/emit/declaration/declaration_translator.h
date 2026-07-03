@@ -1,6 +1,7 @@
 #pragma once
 
 #include "compiler/ir/sdt/sdt.h"
+#include "compiler/ir/model/ir_model.h"
 #include "compiler/parser/parser.h"
 
 #include <functional>
@@ -13,8 +14,10 @@ class DeclarationContext {
 public:
   virtual ~DeclarationContext() = default;
 
-  virtual void emitConstDefinition(const compiler::parser::ParseNode &node) = 0;
-  virtual void emitVarDefinition(const compiler::parser::ParseNode &node) = 0;
+  virtual void emitConstDefinition(const compiler::parser::ParseNode &node,
+                                   SourceValueType type) = 0;
+  virtual void emitVarDefinition(const compiler::parser::ParseNode &node,
+                                 SourceValueType type) = 0;
 };
 
 class DeclarationTranslator {
@@ -31,8 +34,14 @@ private:
 
   sdt::AttributeSet doneAttribute() const;
   void walkChildren(const compiler::parser::ParseNode &node) const;
+  void emitConstDeclaration(const compiler::parser::ParseNode &node) const;
+  void emitVarDeclaration(const compiler::parser::ParseNode &node) const;
   void emitConstDefinitionNode(const compiler::parser::ParseNode &node) const;
   void emitVarDefinitionNode(const compiler::parser::ParseNode &node) const;
+  void emitConstDefinitionList(const compiler::parser::ParseNode &node,
+                               SourceValueType type) const;
+  void emitVarDefinitionList(const compiler::parser::ParseNode &node,
+                             SourceValueType type) const;
   void ignoreNode(const compiler::parser::ParseNode &node) const;
   void registerRule(const std::string &lhs,
                     std::initializer_list<std::string> rhs,

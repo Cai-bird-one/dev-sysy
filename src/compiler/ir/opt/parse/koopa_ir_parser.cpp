@@ -20,6 +20,10 @@ IrModule KoopaIrParser::parse(const std::string &koopa_ir) const {
     if (line.empty() || startsWith(line, "//")) {
       continue;
     }
+    if (isTensorDialectLine(line)) {
+      parseTensorDialectLine(module.tensor, line);
+      continue;
+    }
 
     if (startsWith(line, "fun @")) {
       if (in_function) {

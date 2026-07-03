@@ -97,7 +97,7 @@ Program parseProgram(const std::string &koopa_ir) {
 
   while (std::getline(input, line)) {
     line = trim(line);
-    if (line.empty() || startsWith(line, "//")) {
+    if (line.empty() || startsWith(line, "//") || startsWith(line, "tensor ")) {
       continue;
     }
 

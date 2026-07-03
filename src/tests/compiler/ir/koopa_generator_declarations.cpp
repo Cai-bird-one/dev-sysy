@@ -48,6 +48,26 @@ TEST_CASE(koopa_generator_emits_global_variable_store) {
             "}\n");
 }
 
+TEST_CASE(koopa_generator_emits_tensor_declarations_from_source_type) {
+  lexer::Lexer lexer = lexer::buildDefaultLexer();
+  parser::Parser parser = parser::buildDefaultParser();
+  ir::KoopaGenerator generator;
+
+  std::istringstream input(
+      "tensor g[2][3]; int main(){tensor x[2][3]; return 0;}");
+  std::unique_ptr<parser::ParseNode> ast = parser.parse(lexer.tokenize(input));
+
+  EXPECT_EQ(generator.generate(*ast),
+            "tensor @g: tensor<2x3>\n"
+            "global @g = alloc [[i32, 3], 2], zeroinit\n"
+            "\n"
+            "fun @main(): i32 {\n%entry:\n"
+            "  %x = alloc [[i32, 3], 2]\n"
+            "  tensor %x: tensor<2x3>\n"
+            "  ret 0\n"
+            "}\n");
+}
+
 TEST_CASE(koopa_generator_emits_local_variable_storage) {
   lexer::Lexer lexer = lexer::buildDefaultLexer();
   parser::Parser parser = parser::buildDefaultParser();
