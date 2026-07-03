@@ -22,6 +22,9 @@ IrModule KoopaIrParser::parse(const std::string &koopa_ir) const {
     }
     if (isTensorDialectLine(line)) {
       parseTensorDialectLine(module.tensor, line);
+      if (in_function && line.find(" = ") != std::string::npos) {
+        current.instructions.push_back(line);
+      }
       continue;
     }
 

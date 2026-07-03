@@ -288,6 +288,63 @@ TEST_CASE(ir_optimizer_preserves_optimized_tensor_dialect) {
   EXPECT_TRUE(optimized.find("tensor %sum = add") == std::string::npos);
 }
 
+TEST_CASE(ir_optimizer_lowers_function_local_tensor_matmul) {
+  std::string koopa =
+      "tensor %a: tensor<2x3>\n"
+      "tensor %b: tensor<3x2>\n"
+      "tensor %c: tensor<2x2>\n"
+      "fun @main(): i32 {\n"
+      "%entry:\n"
+      "  %a = alloc [[i32, 3], 2]\n"
+      "  %b = alloc [[i32, 2], 3]\n"
+      "  %c = alloc [[i32, 2], 2]\n"
+      "  %a0 = getelemptr %a, 0\n"
+      "  %a00 = getelemptr %a0, 0\n"
+      "  store 2, %a00\n"
+      "  %a01 = getelemptr %a0, 1\n"
+      "  store 3, %a01\n"
+      "  %a02 = getelemptr %a0, 2\n"
+      "  store 4, %a02\n"
+      "  %a1 = getelemptr %a, 1\n"
+      "  %a10 = getelemptr %a1, 0\n"
+      "  store 5, %a10\n"
+      "  %a11 = getelemptr %a1, 1\n"
+      "  store 6, %a11\n"
+      "  %a12 = getelemptr %a1, 2\n"
+      "  store 7, %a12\n"
+      "  %b0 = getelemptr %b, 0\n"
+      "  %b00 = getelemptr %b0, 0\n"
+      "  store 11, %b00\n"
+      "  %b01 = getelemptr %b0, 1\n"
+      "  store 13, %b01\n"
+      "  %b1 = getelemptr %b, 1\n"
+      "  %b10 = getelemptr %b1, 0\n"
+      "  store 17, %b10\n"
+      "  %b11 = getelemptr %b1, 1\n"
+      "  store 19, %b11\n"
+      "  %b2 = getelemptr %b, 2\n"
+      "  %b20 = getelemptr %b2, 0\n"
+      "  store 23, %b20\n"
+      "  %b21 = getelemptr %b2, 1\n"
+      "  store 29, %b21\n"
+      "  tensor %c = matmul %a, %b : tensor<2x2>\n"
+      "  %crow = getelemptr %c, 1\n"
+      "  %celem = getelemptr %crow, 1\n"
+      "  %out = load %celem\n"
+      "  ret %out\n"
+      "}\n";
+
+  std::string optimized = ir::opt::IrOptimizer().optimize(koopa);
+  std::string riscv = riscv::RiscvGenerator().generate(optimized);
+
+  EXPECT_TRUE(optimized.find("tensor %c = matmul") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%tensor_mm0_unroll_cell:") !=
+              std::string::npos);
+  EXPECT_TRUE(optimized.find("%tensor_mm0_unroll_j_cond:") !=
+              std::string::npos);
+  EXPECT_TRUE(riscv.find("tensor_mm0_unroll_cell") != std::string::npos);
+}
+
 TEST_CASE(koopa_tensor_ir_formats_tensor_dialect) {
   std::string shape = ir::formatTensorShapeDecl("%x", {{1, 4}});
   std::string op = ir::formatTensorOpDecl(

@@ -35,6 +35,12 @@ make
 
 本仓库在基础 SysY 编译流程上增加了 Koopa tensor IR dialect，并实现了多项 IR 与 RISC-V 后端优化。Tensor IR 见 [Tensor IR 说明](EXTENSION.md)，优化实现见 [优化说明](OPTIMIZATION.md)。
 
+显式 tensor dialect 可以通过 `.koopa` 文件直接进入 `-perf` 优化与 RISC-V 后端，矩阵乘 lowering 的专项性能脚本位于：
+
+```sh
+python3 manual_tensor_perf_cases/compare_matmul_lowering.py
+```
+
 ## 词法分析框架
 
 词法分析模块位于 `src/compiler/lexer` 目录. 词法分析引擎在 `lexer.h` / `lexer.cpp` 中, 具体 token 规则集中写在 `token_rules.h` / `token_rules.cpp` 中.

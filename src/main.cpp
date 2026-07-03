@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -58,6 +59,21 @@ parseSource(const std::string &input_path) {
   return parser.parse(lexer.tokenize(input));
 }
 
+std::string readTextFile(const std::string &input_path) {
+  std::ifstream input(input_path);
+  if (!input) {
+    throw InputFileError("cannot open input file: " + input_path);
+  }
+  std::ostringstream output;
+  output << input.rdbuf();
+  return output.str();
+}
+
+bool endsWith(const std::string &text, const std::string &suffix) {
+  return text.size() >= suffix.size() &&
+         text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 void compileToKoopa(const CompilerOptions &options) {
   std::unique_ptr<compiler::parser::ParseNode> ast =
       parseSource(options.input_path);
@@ -87,9 +103,6 @@ void compileToRiscv(const CompilerOptions &options) {
 }
 
 void compileToOptimizedRiscv(const CompilerOptions &options) {
-  std::unique_ptr<compiler::parser::ParseNode> ast =
-      parseSource(options.input_path);
-
   std::ofstream output(options.output_path);
   if (!output) {
     throw OutputFileError("cannot open output file: " + options.output_path);
@@ -99,7 +112,14 @@ void compileToOptimizedRiscv(const CompilerOptions &options) {
   compiler::ir::opt::IrOptimizer ir_optimizer;
   compiler::riscv::RiscvGenerator riscv_generator;
 
-  std::string koopa = koopa_generator.generate(*ast);
+  std::string koopa;
+  if (endsWith(options.input_path, ".koopa")) {
+    koopa = readTextFile(options.input_path);
+  } else {
+    std::unique_ptr<compiler::parser::ParseNode> ast =
+        parseSource(options.input_path);
+    koopa = koopa_generator.generate(*ast);
+  }
   riscv_generator.generateOptimized(ir_optimizer.optimize(koopa), output);
 }
 

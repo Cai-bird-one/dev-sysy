@@ -14,6 +14,11 @@ public:
   PassResult run(IrModule &module) override;
 };
 
+class TensorMatmulLoweringPass : public ModulePass {
+public:
+  PassResult run(IrModule &module) override;
+};
+
 class ConstantFoldingPass : public FunctionPass {
 public:
   PassResult run(IrFunction &function) override;
