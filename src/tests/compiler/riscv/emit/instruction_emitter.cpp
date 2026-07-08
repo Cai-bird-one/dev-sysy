@@ -309,3 +309,38 @@ TEST_CASE(instruction_emitter_loads_and_stores_colored_registers_directly) {
   EXPECT_TRUE(riscv.find("  mv " + result_reg + ", t0\n") ==
               std::string::npos);
 }
+
+TEST_CASE(instruction_emitter_can_disable_direct_colored_register_emission) {
+  riscv::Function function;
+  function.name = "main";
+  function.params = {"%p", "%v"};
+  function.param_types = {"*i32", "i32"};
+  function.instructions = {
+      "%entry:",
+      "  store %v, %p",
+      "  store 0, %p",
+      "  %0 = load %p",
+      "  ret %0",
+  };
+
+  riscv::RegisterAllocation allocation;
+  allocation.assign("%p", "s1");
+  allocation.assign("%v", "s2");
+  allocation.assign("%0", "s3");
+  riscv::StackFrame frame(function, {}, allocation);
+  std::ostringstream output;
+  riscv::AssemblyEmitter asm_output(output);
+  riscv::InstructionEmitter instructions(function.name, frame, asm_output,
+                                         false);
+
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    instructions.emitInstruction(function.instructions[i], i);
+  }
+
+  std::string riscv = output.str();
+  EXPECT_TRUE(riscv.find("  mv t0, s2\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  li t0, 0\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  sw t0, 0(s1)\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  lw t0, 0(s1)\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  mv s3, t0\n") != std::string::npos);
+}

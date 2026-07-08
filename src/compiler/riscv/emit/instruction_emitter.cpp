@@ -97,9 +97,10 @@ void loadBinaryOperands(const StackFrame &frame, OperandEmitter &operands,
 
 InstructionEmitter::InstructionEmitter(std::string function_name,
                                        const StackFrame &frame,
-                                       AssemblyEmitter &output)
+                                       AssemblyEmitter &output,
+                                       bool direct_register_targets)
     : function_name_(std::move(function_name)), frame_(frame),
-      output_(output) {}
+      output_(output), direct_register_targets_(direct_register_targets) {}
 
 void InstructionEmitter::emitInstruction(const std::string &line,
                                          size_t instruction_index) {
@@ -129,7 +130,7 @@ void InstructionEmitter::emitInstruction(const std::string &line,
       return;
     }
     std::string condition_reg = "t0";
-    if (frame_.hasRegisterValue(parts[1])) {
+    if (direct_register_targets_ && frame_.hasRegisterValue(parts[1])) {
       condition_reg = frame_.registerFor(parts[1]);
     } else {
       operands.loadOperand(parts[1], condition_reg);
@@ -151,11 +152,11 @@ void InstructionEmitter::emitInstruction(const std::string &line,
     if (parts.size() != 3) {
       throw RiscvError("invalid store instruction: " + line);
     }
-    if (isZeroLiteral(parts[1])) {
+    if (direct_register_targets_ && isZeroLiteral(parts[1])) {
       operands.storeToPointer("zero", parts[2]);
       return;
     }
-    if (frame_.hasRegisterValue(parts[1])) {
+    if (direct_register_targets_ && frame_.hasRegisterValue(parts[1])) {
       operands.storeToPointer(frame_.registerFor(parts[1]), parts[2]);
       return;
     }
@@ -215,7 +216,7 @@ void InstructionEmitter::emitInstruction(const std::string &line,
       if (parts.size() != 4) {
         throw RiscvError("invalid load instruction: " + line);
       }
-      if (frame_.hasRegisterValue(result)) {
+      if (direct_register_targets_ && frame_.hasRegisterValue(result)) {
         operands.loadFromPointer(parts[3], frame_.registerFor(result));
         return;
       }
@@ -225,9 +226,11 @@ void InstructionEmitter::emitInstruction(const std::string &line,
     }
     if (parts.size() == 5) {
       const std::string target =
-          frame_.hasRegisterValue(result) ? frame_.registerFor(result) : "t0";
+          direct_register_targets_ && frame_.hasRegisterValue(result)
+              ? frame_.registerFor(result)
+              : "t0";
       emitBinary(op, parts[3], parts[4], target);
-      if (!frame_.hasRegisterValue(result)) {
+      if (!direct_register_targets_ || !frame_.hasRegisterValue(result)) {
         operands.storeValue(target, result);
       }
       return;

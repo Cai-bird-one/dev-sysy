@@ -13,7 +13,8 @@ namespace compiler::riscv {
 class InstructionEmitter {
 public:
   InstructionEmitter(std::string function_name, const StackFrame &frame,
-                     AssemblyEmitter &output);
+                     AssemblyEmitter &output,
+                     bool direct_register_targets = true);
 
   void emitInstruction(const std::string &line, size_t instruction_index);
 
@@ -33,6 +34,7 @@ private:
   std::string function_name_;
   const StackFrame &frame_;
   AssemblyEmitter &output_;
+  bool direct_register_targets_ = true;
 };
 
 } // namespace compiler::riscv

@@ -342,12 +342,6 @@ void markFunctionSensitivity(std::vector<bool> &sensitive, size_t begin,
 
 std::vector<bool>
 computeLayoutSensitiveLines(const std::vector<std::string> &lines) {
-  (void)lines;
-  return std::vector<bool>(lines.size(), false);
-}
-
-[[maybe_unused]] std::vector<bool>
-computeConservativeLayoutSensitiveLines(const std::vector<std::string> &lines) {
   std::vector<bool> sensitive(lines.size(), false);
   bool in_text = false;
   std::string pending_global;

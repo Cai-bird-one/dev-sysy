@@ -278,6 +278,29 @@ TEST_CASE(riscv_generator_emits_direct_comparison_branches) {
   EXPECT_TRUE(riscv.find("bnez ") == std::string::npos);
 }
 
+TEST_CASE(riscv_generator_keeps_branch_dense_functions_conservative) {
+  std::string koopa = "fun @main(@x: i32, @y: i32): i32 {\n"
+                      "%entry:\n";
+  for (int i = 0; i < 8; ++i) {
+    std::string suffix = std::to_string(i);
+    koopa += "  %" + suffix + " = lt @x, @y\n";
+    koopa += "  br %" + suffix + ", %then_" + suffix + ", %next_" +
+             suffix + "\n";
+    koopa += "%then_" + suffix + ":\n";
+    koopa += "  jump %next_" + suffix + "\n";
+    koopa += "%next_" + suffix + ":\n";
+  }
+  koopa += "  ret 0\n"
+           "}\n";
+
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate(koopa);
+
+  EXPECT_TRUE(riscv.find("  slt ") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  bnez ") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  blt ") == std::string::npos);
+}
+
 TEST_CASE(riscv_generator_keeps_reused_comparison_results) {
   riscv::RiscvGenerator generator;
   std::string riscv = generator.generate("fun @main(@x: i32, @y: i32): i32 {\n"

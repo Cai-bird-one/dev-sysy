@@ -41,6 +41,31 @@ bool isLiteralValue(const std::string &text, const std::string &literal) {
   return isIntegerLiteral(text) && text == literal;
 }
 
+bool isInstructionLine(const std::string &line) {
+  std::string text = trim(line);
+  return !text.empty() && text.back() != ':';
+}
+
+bool isLayoutSensitiveFunction(const Function &function) {
+  int instruction_count = 0;
+  int branch_count = 0;
+  for (const std::string &line : function.instructions) {
+    if (!isInstructionLine(line)) {
+      continue;
+    }
+    ++instruction_count;
+    std::vector<std::string> parts = splitWhitespace(line);
+    if (parts[0] == "br" || parts[0] == "jump") {
+      ++branch_count;
+    }
+  }
+
+  if (instruction_count >= 200 && branch_count >= 20) {
+    return true;
+  }
+  return branch_count >= 8 && branch_count * 13 >= instruction_count;
+}
+
 bool parseBooleanComparison(const std::string &line,
                             const std::string &condition_value,
                             std::string &result, bool &invert) {
@@ -227,10 +252,12 @@ void FunctionEmitter::emit(std::ostream &output) {
     }
   }
 
-  InstructionEmitter instructions(function_.name, frame_, asm_output);
+  bool layout_sensitive = isLayoutSensitiveFunction(function_);
+  InstructionEmitter instructions(function_.name, frame_, asm_output,
+                                  !layout_sensitive);
   std::map<std::string, int> value_uses = countValueUses(function_);
   for (size_t i = 0; i < function_.instructions.size(); ++i) {
-    if (i + 2 < function_.instructions.size()) {
+    if (!layout_sensitive && i + 2 < function_.instructions.size()) {
       ComparisonAssignment comparison =
           parseComparisonAssignment(function_.instructions[i]);
       std::string bool_result;
@@ -257,7 +284,7 @@ void FunctionEmitter::emit(std::ostream &output) {
         }
       }
     }
-    if (i + 1 < function_.instructions.size()) {
+    if (!layout_sensitive && i + 1 < function_.instructions.size()) {
       ComparisonAssignment comparison =
           parseComparisonAssignment(function_.instructions[i]);
       BranchInstruction branch =
