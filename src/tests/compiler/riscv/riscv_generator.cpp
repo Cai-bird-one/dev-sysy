@@ -65,7 +65,8 @@ TEST_CASE(riscv_generator_handles_stack_variables) {
 
   EXPECT_TRUE(riscv.find("addi sp, sp, -16") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(sp)") != std::string::npos);
-  EXPECT_TRUE(riscv.find("addi t0, t0, 2") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 2") != std::string::npos);
   EXPECT_TRUE(riscv.find("mv a0, ") != std::string::npos);
   EXPECT_TRUE(riscv.find("ret") != std::string::npos);
 }
@@ -86,8 +87,10 @@ TEST_CASE(riscv_generator_handles_global_variables) {
   EXPECT_TRUE(riscv.find("  .word 7\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  .bss\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("z:\n  .zero 16\n") != std::string::npos);
-  EXPECT_TRUE(riscv.find("la t0, g") != std::string::npos);
-  EXPECT_TRUE(riscv.find("lw t0, 0(t0)") != std::string::npos);
+  EXPECT_TRUE(riscv.find("la ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", g") != std::string::npos);
+  EXPECT_TRUE(riscv.find("lw ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 0(") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_handles_arrays_and_getelemptr) {
@@ -109,8 +112,8 @@ TEST_CASE(riscv_generator_handles_arrays_and_getelemptr) {
 
   EXPECT_TRUE(riscv.find("a:\n  .word 1\n  .word 2\n  .word 0\n  .word 3") !=
               std::string::npos);
-  EXPECT_TRUE(riscv.find("addi t0, t0, 12") != std::string::npos);
-  EXPECT_TRUE(riscv.find("addi t0, t0, 8") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 12") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 8") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(") != std::string::npos);
 }
 
@@ -125,7 +128,7 @@ TEST_CASE(riscv_generator_treats_single_element_arrays_as_stack_addresses) {
                                          "  ret %1\n"
                                          "}\n");
 
-  EXPECT_TRUE(riscv.find("addi t0, sp, ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", sp, ") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
@@ -145,8 +148,8 @@ TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
   EXPECT_TRUE(riscv.find("sum:\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw a0") == std::string::npos);
   EXPECT_TRUE(riscv.find("sw a1") == std::string::npos);
-  EXPECT_TRUE(riscv.find("addi t0, t0, 12") != std::string::npos);
-  EXPECT_TRUE(riscv.find("addi t0, t0, 8") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 12") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 8") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_keeps_plain_array_transpose_generic) {
@@ -207,8 +210,9 @@ TEST_CASE(riscv_generator_handles_comparisons) {
                                          "  ret %1\n"
                                          "}\n");
 
-  EXPECT_TRUE(riscv.find("slti t0, t0, 2") != std::string::npos);
-  EXPECT_TRUE(riscv.find("seqz t0, t0") != std::string::npos);
+  EXPECT_TRUE(riscv.find("slti ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 2") != std::string::npos);
+  EXPECT_TRUE(riscv.find("seqz ") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_handles_branches_and_jumps) {
@@ -245,13 +249,33 @@ TEST_CASE(riscv_generator_removes_redundant_booleanized_comparison_branches) {
                                          "  ret 0\n"
                                          "}\n");
 
-  EXPECT_TRUE(riscv.find("beq t0, t1, main_then") != std::string::npos);
-  EXPECT_TRUE(riscv.find("blt t0, t1, main_else") != std::string::npos);
+  EXPECT_TRUE(riscv.find("beq ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", main_then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("blt ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", main_else") != std::string::npos);
   EXPECT_TRUE(riscv.find("bnez t0, main_then") == std::string::npos);
   EXPECT_TRUE(riscv.find("bnez t0, main_else") == std::string::npos);
   EXPECT_TRUE(riscv.find("seqz t0, t0") == std::string::npos);
   EXPECT_TRUE(riscv.find("slt t0, t0, t1") == std::string::npos);
   EXPECT_TRUE(riscv.find("snez t0") == std::string::npos);
+}
+
+TEST_CASE(riscv_generator_emits_direct_comparison_branches) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("fun @main(@x: i32, @y: i32): i32 {\n"
+                                         "%entry:\n"
+                                         "  %0 = lt @x, @y\n"
+                                         "  br %0, %then, %else\n"
+                                         "%then:\n"
+                                         "  ret 1\n"
+                                         "%else:\n"
+                                         "  ret 0\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("blt ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", main_then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("slt ") == std::string::npos);
+  EXPECT_TRUE(riscv.find("bnez ") == std::string::npos);
 }
 
 TEST_CASE(riscv_generator_keeps_reused_comparison_results) {
@@ -266,8 +290,9 @@ TEST_CASE(riscv_generator_keeps_reused_comparison_results) {
                                          "  ret 0\n"
                                          "}\n");
 
-  EXPECT_TRUE(riscv.find("slt t0, t0, t1") != std::string::npos);
-  EXPECT_TRUE(riscv.find("bnez t0, main_then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("slt ") != std::string::npos);
+  EXPECT_TRUE(riscv.find("bnez ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", main_then") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_keeps_control_flow_labels_function_local) {
@@ -312,7 +337,8 @@ TEST_CASE(riscv_generator_handles_large_stack_offsets) {
   EXPECT_TRUE(riscv.find("li t2, 2400") != std::string::npos);
   EXPECT_TRUE(riscv.find("add t2, sp, t2") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(t2)") != std::string::npos);
-  EXPECT_TRUE(riscv.find("lw t0, 0(t2)") != std::string::npos);
+  EXPECT_TRUE(riscv.find("lw ") != std::string::npos);
+  EXPECT_TRUE(riscv.find(", 0(t2)") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_handles_functions_and_calls) {

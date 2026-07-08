@@ -75,6 +75,24 @@ bool fitsImmediate12(long long value) {
   return value >= -2048 && value <= 2047;
 }
 
+bool operandInRegister(const StackFrame &frame, const std::string &operand,
+                       const std::string &reg) {
+  return frame.hasRegisterValue(operand) && frame.registerFor(operand) == reg;
+}
+
+void loadBinaryOperands(const StackFrame &frame, OperandEmitter &operands,
+                        const std::string &left, const std::string &right,
+                        const std::string &target,
+                        const std::string &right_reg) {
+  if (left != right && operandInRegister(frame, right, target)) {
+    operands.loadOperand(right, right_reg);
+    operands.loadOperand(left, target);
+    return;
+  }
+  operands.loadOperand(left, target);
+  operands.loadOperand(right, right_reg);
+}
+
 } // namespace
 
 InstructionEmitter::InstructionEmitter(std::string function_name,
@@ -110,8 +128,13 @@ void InstructionEmitter::emitInstruction(const std::string &line,
                                                                   : parts[3]));
       return;
     }
-    operands.loadOperand(parts[1], "t0");
-    output_.instruction("bnez t0, " + asmLabel(parts[2]));
+    std::string condition_reg = "t0";
+    if (frame_.hasRegisterValue(parts[1])) {
+      condition_reg = frame_.registerFor(parts[1]);
+    } else {
+      operands.loadOperand(parts[1], condition_reg);
+    }
+    output_.instruction("bnez " + condition_reg + ", " + asmLabel(parts[2]));
     output_.instruction("j " + asmLabel(parts[3]));
     return;
   }
@@ -127,6 +150,14 @@ void InstructionEmitter::emitInstruction(const std::string &line,
   if (parts[0] == "store") {
     if (parts.size() != 3) {
       throw RiscvError("invalid store instruction: " + line);
+    }
+    if (isZeroLiteral(parts[1])) {
+      operands.storeToPointer("zero", parts[2]);
+      return;
+    }
+    if (frame_.hasRegisterValue(parts[1])) {
+      operands.storeToPointer(frame_.registerFor(parts[1]), parts[2]);
+      return;
     }
     operands.loadOperand(parts[1], "t0");
     operands.storeToPointer("t0", parts[2]);
@@ -157,7 +188,7 @@ void InstructionEmitter::emitInstruction(const std::string &line,
     return;
   }
 
-    if (parts.size() >= 3 && parts[1] == "=") {
+  if (parts.size() >= 3 && parts[1] == "=") {
     const std::string &result = parts[0];
     const std::string &op = parts[2];
     if (op == "alloc") {
@@ -184,13 +215,21 @@ void InstructionEmitter::emitInstruction(const std::string &line,
       if (parts.size() != 4) {
         throw RiscvError("invalid load instruction: " + line);
       }
+      if (frame_.hasRegisterValue(result)) {
+        operands.loadFromPointer(parts[3], frame_.registerFor(result));
+        return;
+      }
       operands.loadFromPointer(parts[3], "t0");
       operands.storeValue("t0", result);
       return;
     }
     if (parts.size() == 5) {
-      emitBinary(op, parts[3], parts[4]);
-      operands.storeValue("t0", result);
+      const std::string target =
+          frame_.hasRegisterValue(result) ? frame_.registerFor(result) : "t0";
+      emitBinary(op, parts[3], parts[4], target);
+      if (!frame_.hasRegisterValue(result)) {
+        operands.storeValue(target, result);
+      }
       return;
     }
   }
@@ -200,44 +239,45 @@ void InstructionEmitter::emitInstruction(const std::string &line,
 
 void InstructionEmitter::emitBinary(const std::string &op,
                                     const std::string &left,
-                                    const std::string &right) {
+                                    const std::string &right,
+                                    const std::string &target) {
   OperandEmitter operands(frame_, output_);
   if (isComparison(op)) {
     if (isZeroLiteral(right)) {
-      operands.loadOperand(left, "t0");
+      operands.loadOperand(left, target);
       if (op == "eq") {
-        output_.instruction("seqz t0, t0");
+        output_.instruction("seqz " + target + ", " + target);
       } else if (op == "ne") {
-        output_.instruction("snez t0, t0");
+        output_.instruction("snez " + target + ", " + target);
       } else if (op == "lt") {
-        output_.instruction("slt t0, t0, zero");
+        output_.instruction("slt " + target + ", " + target + ", zero");
       } else if (op == "gt") {
-        output_.instruction("slt t0, zero, t0");
+        output_.instruction("slt " + target + ", zero, " + target);
       } else if (op == "le") {
-        output_.instruction("slt t0, zero, t0");
-        output_.instruction("xori t0, t0, 1");
+        output_.instruction("slt " + target + ", zero, " + target);
+        output_.instruction("xori " + target + ", " + target + ", 1");
       } else if (op == "ge") {
-        output_.instruction("slt t0, t0, zero");
-        output_.instruction("xori t0, t0, 1");
+        output_.instruction("slt " + target + ", " + target + ", zero");
+        output_.instruction("xori " + target + ", " + target + ", 1");
       }
       return;
     }
     if (isZeroLiteral(left)) {
-      operands.loadOperand(right, "t0");
+      operands.loadOperand(right, target);
       if (op == "eq") {
-        output_.instruction("seqz t0, t0");
+        output_.instruction("seqz " + target + ", " + target);
       } else if (op == "ne") {
-        output_.instruction("snez t0, t0");
+        output_.instruction("snez " + target + ", " + target);
       } else if (op == "lt") {
-        output_.instruction("slt t0, zero, t0");
+        output_.instruction("slt " + target + ", zero, " + target);
       } else if (op == "gt") {
-        output_.instruction("slt t0, t0, zero");
+        output_.instruction("slt " + target + ", " + target + ", zero");
       } else if (op == "le") {
-        output_.instruction("slt t0, t0, zero");
-        output_.instruction("xori t0, t0, 1");
+        output_.instruction("slt " + target + ", " + target + ", zero");
+        output_.instruction("xori " + target + ", " + target + ", 1");
       } else if (op == "ge") {
-        output_.instruction("slt t0, zero, t0");
-        output_.instruction("xori t0, t0, 1");
+        output_.instruction("slt " + target + ", zero, " + target);
+        output_.instruction("xori " + target + ", " + target + ", 1");
       }
       return;
     }
@@ -245,88 +285,96 @@ void InstructionEmitter::emitBinary(const std::string &op,
     if (parseInteger(right, immediate)) {
       int imm12 = static_cast<int>(immediate);
       if ((op == "eq" || op == "ne") && fitsImmediate12(-immediate)) {
-        operands.loadOperand(left, "t0");
-        output_.instruction("addi t0, t0, " + std::to_string(-immediate));
+        operands.loadOperand(left, target);
+        output_.instruction("addi " + target + ", " + target + ", " +
+                            std::to_string(-immediate));
         output_.instruction((op == "eq" ? "seqz" : "snez") +
-                            std::string(" t0, t0"));
+                            std::string(" ") + target + ", " + target);
         return;
       }
       if ((op == "lt" || op == "ge") && fitsImmediate12(immediate)) {
-        operands.loadOperand(left, "t0");
-        output_.instruction("slti t0, t0, " + std::to_string(imm12));
+        operands.loadOperand(left, target);
+        output_.instruction("slti " + target + ", " + target + ", " +
+                            std::to_string(imm12));
         if (op == "ge") {
-          output_.instruction("xori t0, t0, 1");
+          output_.instruction("xori " + target + ", " + target + ", 1");
         }
         return;
       }
       if ((op == "le" || op == "gt") && fitsImmediate12(immediate + 1)) {
-        operands.loadOperand(left, "t0");
-        output_.instruction("slti t0, t0, " +
+        operands.loadOperand(left, target);
+        output_.instruction("slti " + target + ", " + target + ", " +
                             std::to_string(immediate + 1));
         if (op == "gt") {
-          output_.instruction("xori t0, t0, 1");
+          output_.instruction("xori " + target + ", " + target + ", 1");
         }
         return;
       }
     }
     if (parseInteger(left, immediate)) {
       if ((op == "eq" || op == "ne") && fitsImmediate12(-immediate)) {
-        operands.loadOperand(right, "t0");
-        output_.instruction("addi t0, t0, " + std::to_string(-immediate));
+        operands.loadOperand(right, target);
+        output_.instruction("addi " + target + ", " + target + ", " +
+                            std::to_string(-immediate));
         output_.instruction((op == "eq" ? "seqz" : "snez") +
-                            std::string(" t0, t0"));
+                            std::string(" ") + target + ", " + target);
         return;
       }
       if ((op == "gt" || op == "le") && fitsImmediate12(immediate)) {
-        operands.loadOperand(right, "t0");
-        output_.instruction("slti t0, t0, " + std::to_string(immediate));
+        operands.loadOperand(right, target);
+        output_.instruction("slti " + target + ", " + target + ", " +
+                            std::to_string(immediate));
         if (op == "le") {
-          output_.instruction("xori t0, t0, 1");
+          output_.instruction("xori " + target + ", " + target + ", 1");
         }
         return;
       }
       if ((op == "ge" || op == "lt") && fitsImmediate12(immediate + 1)) {
-        operands.loadOperand(right, "t0");
-        output_.instruction("slti t0, t0, " +
+        operands.loadOperand(right, target);
+        output_.instruction("slti " + target + ", " + target + ", " +
                             std::to_string(immediate + 1));
         if (op == "lt") {
-          output_.instruction("xori t0, t0, 1");
+          output_.instruction("xori " + target + ", " + target + ", 1");
         }
         return;
       }
     }
-    operands.loadOperand(left, "t0");
-    operands.loadOperand(right, "t1");
-    emitComparison(op);
+    loadBinaryOperands(frame_, operands, left, right, target, "t1");
+    emitComparison(op, target, "t1", target);
     return;
   }
   int immediate = 0;
   if (op == "add" && parseImmediate12(right, immediate)) {
-    operands.loadOperand(left, "t0");
-    output_.instruction("addi t0, t0, " + std::to_string(immediate));
+    operands.loadOperand(left, target);
+    output_.instruction("addi " + target + ", " + target + ", " +
+                        std::to_string(immediate));
     return;
   }
   if (op == "add" && parseImmediate12(left, immediate)) {
-    operands.loadOperand(right, "t0");
-    output_.instruction("addi t0, t0, " + std::to_string(immediate));
+    operands.loadOperand(right, target);
+    output_.instruction("addi " + target + ", " + target + ", " +
+                        std::to_string(immediate));
     return;
   }
   if (op == "sub" && parseImmediate12(right, immediate)) {
     int negated = 0;
     if (negatedImmediateFits12(immediate, negated)) {
-      operands.loadOperand(left, "t0");
-      output_.instruction("addi t0, t0, " + std::to_string(negated));
+      operands.loadOperand(left, target);
+      output_.instruction("addi " + target + ", " + target + ", " +
+                          std::to_string(negated));
       return;
     }
   }
   if ((op == "and" || op == "or") && parseImmediate12(right, immediate)) {
-    operands.loadOperand(left, "t0");
-    output_.instruction(op + "i t0, t0, " + std::to_string(immediate));
+    operands.loadOperand(left, target);
+    output_.instruction(op + "i " + target + ", " + target + ", " +
+                        std::to_string(immediate));
     return;
   }
   if ((op == "and" || op == "or") && parseImmediate12(left, immediate)) {
-    operands.loadOperand(right, "t0");
-    output_.instruction(op + "i t0, t0, " + std::to_string(immediate));
+    operands.loadOperand(right, target);
+    output_.instruction(op + "i " + target + ", " + target + ", " +
+                        std::to_string(immediate));
     return;
   }
   if (op == "mul") {
@@ -340,26 +388,29 @@ void InstructionEmitter::emitBinary(const std::string &op,
 
     if (!operand.empty()) {
       if (constant == 0) {
-        output_.loadImmediate("t0", "0");
+        output_.loadImmediate(target, "0");
         return;
       }
-      operands.loadOperand(operand, "t0");
+      operands.loadOperand(operand, target);
       if (constant == 1) {
         return;
       }
       int shift = 0;
       if (powerOfTwoShift(constant, shift)) {
-        output_.instruction("slli t0, t0, " + std::to_string(shift));
+        output_.instruction("slli " + target + ", " + target + ", " +
+                            std::to_string(shift));
         return;
       }
       if (constant > 1 && powerOfTwoShift(constant - 1, shift)) {
-        output_.instruction("slli t1, t0, " + std::to_string(shift));
-        output_.instruction("add t0, t1, t0");
+        output_.instruction("slli t1, " + target + ", " +
+                            std::to_string(shift));
+        output_.instruction("add " + target + ", t1, " + target);
         return;
       }
       if (constant > 1 && powerOfTwoShift(constant + 1, shift)) {
-        output_.instruction("slli t1, t0, " + std::to_string(shift));
-        output_.instruction("sub t0, t1, t0");
+        output_.instruction("slli t1, " + target + ", " +
+                            std::to_string(shift));
+        output_.instruction("sub " + target + ", t1, " + target);
         return;
       }
     }
@@ -370,37 +421,39 @@ void InstructionEmitter::emitBinary(const std::string &op,
       int shift = 0;
       if (powerOfTwoShift(divisor, shift)) {
         if (op == "mod" && shift == 0) {
-          output_.loadImmediate("t0", "0");
+          output_.loadImmediate(target, "0");
           return;
         }
-        operands.loadOperand(left, "t0");
+        operands.loadOperand(left, target);
         if (shift == 0) {
           return;
         }
 
         long long bias = divisor - 1;
-        output_.instruction("srai t1, t0, 31");
+        output_.instruction("srai t1, " + target + ", 31");
         if (fitsImmediate12(bias)) {
           output_.instruction("andi t1, t1, " + std::to_string(bias));
         } else {
           output_.loadImmediate("t2", std::to_string(bias));
           output_.instruction("and t1, t1, t2");
         }
-        output_.instruction("add t1, t0, t1");
+        output_.instruction("add t1, " + target + ", t1");
         output_.instruction("srai t1, t1, " + std::to_string(shift));
         if (op == "div") {
-          output_.instruction("mv t0, t1");
+          if (target != "t1") {
+            output_.instruction("mv " + target + ", t1");
+          }
         } else {
           output_.instruction("slli t1, t1, " + std::to_string(shift));
-          output_.instruction("sub t0, t0, t1");
+          output_.instruction("sub " + target + ", " + target + ", t1");
         }
         return;
       }
     }
   }
-  operands.loadOperand(left, "t0");
-  operands.loadOperand(right, "t1");
-  output_.instruction(koopaBinaryToRiscv(op) + " t0, t0, t1");
+  loadBinaryOperands(frame_, operands, left, right, target, "t1");
+  output_.instruction(koopaBinaryToRiscv(op) + " " + target + ", " + target +
+                      ", t1");
 }
 
 void InstructionEmitter::emitCall(const CallInstruction &call,
@@ -438,33 +491,42 @@ void InstructionEmitter::restoreCallerSavedValues(
   }
 }
 
-void InstructionEmitter::emitComparison(const std::string &op) {
+void InstructionEmitter::emitComparison(const std::string &op,
+                                        const std::string &left_reg,
+                                        const std::string &right_reg,
+                                        const std::string &target) {
   if (op == "lt") {
-    output_.instruction("slt t0, t0, t1");
+    output_.instruction("slt " + target + ", " + left_reg + ", " +
+                        right_reg);
     return;
   }
   if (op == "gt") {
-    output_.instruction("slt t0, t1, t0");
+    output_.instruction("slt " + target + ", " + right_reg + ", " +
+                        left_reg);
     return;
   }
   if (op == "le") {
-    output_.instruction("slt t0, t1, t0");
-    output_.instruction("xori t0, t0, 1");
+    output_.instruction("slt " + target + ", " + right_reg + ", " +
+                        left_reg);
+    output_.instruction("xori " + target + ", " + target + ", 1");
     return;
   }
   if (op == "ge") {
-    output_.instruction("slt t0, t0, t1");
-    output_.instruction("xori t0, t0, 1");
+    output_.instruction("slt " + target + ", " + left_reg + ", " +
+                        right_reg);
+    output_.instruction("xori " + target + ", " + target + ", 1");
     return;
   }
   if (op == "eq") {
-    output_.instruction("sub t0, t0, t1");
-    output_.instruction("seqz t0, t0");
+    output_.instruction("sub " + target + ", " + left_reg + ", " +
+                        right_reg);
+    output_.instruction("seqz " + target + ", " + target);
     return;
   }
   if (op == "ne") {
-    output_.instruction("sub t0, t0, t1");
-    output_.instruction("snez t0, t0");
+    output_.instruction("sub " + target + ", " + left_reg + ", " +
+                        right_reg);
+    output_.instruction("snez " + target + ", " + target);
     return;
   }
 }

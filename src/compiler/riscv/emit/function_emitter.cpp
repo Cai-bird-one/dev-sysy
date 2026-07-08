@@ -143,10 +143,25 @@ std::string asmLabel(const std::string &function_name,
   return function_name + "_" + stripSigil(koopa_label);
 }
 
+std::string loadBranchOperand(const std::string &operand,
+                              const std::string &scratch,
+                              const StackFrame &frame,
+                              OperandEmitter &operands) {
+  if (isLiteralValue(operand, "0")) {
+    return "zero";
+  }
+  if (frame.hasRegisterValue(operand)) {
+    return frame.registerFor(operand);
+  }
+  operands.loadOperand(operand, scratch);
+  return scratch;
+}
+
 void emitDirectComparisonBranch(const std::string &function_name,
                                 const std::string &comparison_line,
                                 const std::string &then_label,
                                 const std::string &else_label,
+                                const StackFrame &frame,
                                 OperandEmitter &operands,
                                 AssemblyEmitter &output) {
   std::vector<std::string> parts = splitWhitespace(comparison_line);
@@ -155,20 +170,26 @@ void emitDirectComparisonBranch(const std::string &function_name,
   }
 
   const std::string &op = parts[2];
-  operands.loadOperand(parts[3], "t0");
-  operands.loadOperand(parts[4], "t1");
+  std::string left_reg = loadBranchOperand(parts[3], "t0", frame, operands);
+  std::string right_reg = loadBranchOperand(parts[4], "t1", frame, operands);
   if (op == "eq") {
-    output.instruction("beq t0, t1, " + asmLabel(function_name, then_label));
+    output.instruction("beq " + left_reg + ", " + right_reg + ", " +
+                       asmLabel(function_name, then_label));
   } else if (op == "ne") {
-    output.instruction("bne t0, t1, " + asmLabel(function_name, then_label));
+    output.instruction("bne " + left_reg + ", " + right_reg + ", " +
+                       asmLabel(function_name, then_label));
   } else if (op == "lt") {
-    output.instruction("blt t0, t1, " + asmLabel(function_name, then_label));
+    output.instruction("blt " + left_reg + ", " + right_reg + ", " +
+                       asmLabel(function_name, then_label));
   } else if (op == "gt") {
-    output.instruction("blt t1, t0, " + asmLabel(function_name, then_label));
+    output.instruction("blt " + right_reg + ", " + left_reg + ", " +
+                       asmLabel(function_name, then_label));
   } else if (op == "le") {
-    output.instruction("bge t1, t0, " + asmLabel(function_name, then_label));
+    output.instruction("bge " + right_reg + ", " + left_reg + ", " +
+                       asmLabel(function_name, then_label));
   } else if (op == "ge") {
-    output.instruction("bge t0, t1, " + asmLabel(function_name, then_label));
+    output.instruction("bge " + left_reg + ", " + right_reg + ", " +
+                       asmLabel(function_name, then_label));
   }
   output.instruction("j " + asmLabel(function_name, else_label));
 }
@@ -229,11 +250,27 @@ void FunctionEmitter::emit(std::ostream &output) {
           const std::string &else_label =
               invert ? branch.then_label : branch.else_label;
           emitDirectComparisonBranch(function_.name, function_.instructions[i],
-                                     then_label, else_label, operands,
+                                     then_label, else_label, frame_, operands,
                                      asm_output);
           i += 2;
           continue;
         }
+      }
+    }
+    if (i + 1 < function_.instructions.size()) {
+      ComparisonAssignment comparison =
+          parseComparisonAssignment(function_.instructions[i]);
+      BranchInstruction branch =
+          parseBranchInstruction(function_.instructions[i + 1]);
+      auto comparison_uses = value_uses.find(comparison.result);
+      if (comparison.valid && branch.valid &&
+          branch.condition == comparison.result &&
+          comparison_uses != value_uses.end() && comparison_uses->second == 1) {
+        emitDirectComparisonBranch(function_.name, function_.instructions[i],
+                                   branch.then_label, branch.else_label,
+                                   frame_, operands, asm_output);
+        i += 1;
+        continue;
       }
     }
     instructions.emitInstruction(function_.instructions[i], i);

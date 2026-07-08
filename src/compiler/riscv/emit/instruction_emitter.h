@@ -19,9 +19,11 @@ public:
 
 private:
   void emitBinary(const std::string &op, const std::string &left,
-                  const std::string &right);
+                  const std::string &right, const std::string &target);
   void emitCall(const CallInstruction &call, size_t instruction_index);
-  void emitComparison(const std::string &op);
+  void emitComparison(const std::string &op, const std::string &left_reg,
+                      const std::string &right_reg,
+                      const std::string &target);
   void emitGetElementPtr(const std::string &result, const std::string &base,
                          const std::string &index, bool is_getptr);
   void saveCallerSavedValues(const std::set<std::string> &values);
