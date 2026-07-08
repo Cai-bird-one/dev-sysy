@@ -278,7 +278,7 @@ TEST_CASE(riscv_generator_emits_direct_comparison_branches) {
   EXPECT_TRUE(riscv.find("bnez ") == std::string::npos);
 }
 
-TEST_CASE(riscv_generator_keeps_branch_dense_functions_conservative) {
+TEST_CASE(riscv_generator_keeps_branch_dense_direct_comparison_branches) {
   std::string koopa = "fun @main(@x: i32, @y: i32): i32 {\n"
                       "%entry:\n";
   for (int i = 0; i < 8; ++i) {
@@ -296,9 +296,9 @@ TEST_CASE(riscv_generator_keeps_branch_dense_functions_conservative) {
   riscv::RiscvGenerator generator;
   std::string riscv = generator.generate(koopa);
 
-  EXPECT_TRUE(riscv.find("  slt ") != std::string::npos);
-  EXPECT_TRUE(riscv.find("  bnez ") != std::string::npos);
-  EXPECT_TRUE(riscv.find("  blt ") == std::string::npos);
+  EXPECT_TRUE(riscv.find("  blt ") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  slt ") == std::string::npos);
+  EXPECT_TRUE(riscv.find("  bnez ") == std::string::npos);
 }
 
 TEST_CASE(riscv_generator_keeps_reused_comparison_results) {
