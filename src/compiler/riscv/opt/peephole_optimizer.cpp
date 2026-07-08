@@ -10,13 +10,24 @@
 namespace compiler::riscv {
 namespace {
 
-constexpr int kMaxOptimizationIterations = 128;
-
 struct MemoryAccess {
   bool valid = false;
   std::string opcode;
   std::string reg;
   std::string address;
+};
+
+struct MoveInstruction {
+  bool valid = false;
+  std::string dst;
+  std::string src;
+};
+
+struct ConditionalBranch {
+  bool valid = false;
+  std::string opcode;
+  std::string reg;
+  std::string label;
 };
 
 struct OptimizerState {
@@ -129,6 +140,17 @@ std::string opcodeOf(const std::string &line) {
   return text.substr(0, space);
 }
 
+MoveInstruction parseMove(const std::string &line) {
+  if (opcodeOf(line) != "mv") {
+    return {};
+  }
+  std::vector<std::string> operands = parseOperands(line);
+  if (operands.size() != 2) {
+    return {};
+  }
+  return {true, operands[0], operands[1]};
+}
+
 bool definesFirstOperand(const std::string &opcode) {
   return opcode == "li" || opcode == "la" || opcode == "lw" ||
          opcode == "mv" || opcode == "add" || opcode == "addi" ||
@@ -171,6 +193,8 @@ bool isStackAddress(const std::string &address) {
 std::string indentLikeInstruction(const std::string &instruction) {
   return "  " + instruction;
 }
+
+std::string nopInstruction() { return indentLikeInstruction("nop"); }
 
 bool isNoOp(const std::string &line) {
   std::string text = trim(line);
@@ -267,28 +291,182 @@ bool isJumpToLabel(const std::string &line, const std::string &label) {
   return trim(line) == "j " + label;
 }
 
-std::string optimizeOnce(const std::string &assembly) {
+bool parseJumpTarget(const std::string &line, std::string &label) {
+  std::string text = trim(line);
+  if (!startsWith(text, "j ")) {
+    return false;
+  }
+  label = trim(text.substr(2));
+  return !label.empty();
+}
+
+ConditionalBranch parseConditionalBranch(const std::string &line) {
+  std::string opcode = opcodeOf(line);
+  if (opcode != "bnez" && opcode != "beqz") {
+    return {};
+  }
+  std::vector<std::string> operands = parseOperands(line);
+  if (operands.size() != 2) {
+    return {};
+  }
+  return {true, opcode, operands[0], operands[1]};
+}
+
+std::string invertedBranchOpcode(const std::string &opcode) {
+  return opcode == "bnez" ? "beqz" : "bnez";
+}
+
+bool isInstructionLine(const std::string &line) {
+  std::string text = trim(line);
+  return !text.empty() && text.back() != ':' && text[0] != '.';
+}
+
+bool isLayoutSensitiveFunction(int instruction_count, int branch_count) {
+  if (instruction_count >= 1200 && branch_count >= 20) {
+    return true;
+  }
+  return branch_count >= 3 && branch_count * 13 >= instruction_count;
+}
+
+void markFunctionSensitivity(std::vector<bool> &sensitive, size_t begin,
+                             size_t end, int instruction_count,
+                             int branch_count) {
+  if (begin >= end ||
+      !isLayoutSensitiveFunction(instruction_count, branch_count)) {
+    return;
+  }
+  for (size_t i = begin; i < end; ++i) {
+    sensitive[i] = true;
+  }
+}
+
+std::vector<bool>
+computeLayoutSensitiveLines(const std::vector<std::string> &lines) {
+  (void)lines;
+  return std::vector<bool>(lines.size(), false);
+}
+
+[[maybe_unused]] std::vector<bool>
+computeConservativeLayoutSensitiveLines(const std::vector<std::string> &lines) {
+  std::vector<bool> sensitive(lines.size(), false);
+  bool in_text = false;
+  std::string pending_global;
+  size_t function_begin = lines.size();
+  int instruction_count = 0;
+  int branch_count = 0;
+
+  for (size_t i = 0; i < lines.size(); ++i) {
+    std::string text = trim(lines[i]);
+    if (text == ".text") {
+      in_text = true;
+      continue;
+    }
+    if (!in_text) {
+      continue;
+    }
+
+    if (startsWith(text, ".globl ")) {
+      markFunctionSensitivity(sensitive, function_begin, i, instruction_count,
+                              branch_count);
+      function_begin = lines.size();
+      instruction_count = 0;
+      branch_count = 0;
+      pending_global = trim(text.substr(std::string(".globl ").size()));
+      continue;
+    }
+
+    if (!pending_global.empty() && text == pending_global + ":") {
+      function_begin = i;
+      pending_global.clear();
+    }
+
+    if (function_begin != lines.size() && isInstructionLine(lines[i])) {
+      ++instruction_count;
+      std::string opcode = opcodeOf(lines[i]);
+      if (opcode == "j" || startsWith(opcode, "b")) {
+        ++branch_count;
+      }
+    }
+  }
+
+  markFunctionSensitivity(sensitive, function_begin, lines.size(),
+                          instruction_count, branch_count);
+  return sensitive;
+}
+
+bool isRedundantAfterMove(const MoveInstruction &previous,
+                          const MoveInstruction &current) {
+  if (!previous.valid || !current.valid) {
+    return false;
+  }
+  if (previous.dst == current.dst && previous.src == current.src) {
+    return true;
+  }
+  return previous.dst == current.src && previous.src == current.dst;
+}
+
+std::string runPeepholePass(const std::string &assembly) {
   std::vector<std::string> input = splitLines(assembly);
+  std::vector<bool> layout_sensitive = computeLayoutSensitiveLines(input);
   std::vector<std::string> output;
+  std::vector<bool> output_sensitive;
   OptimizerState state;
 
-  for (std::string line : input) {
+  for (size_t index = 0; index < input.size(); ++index) {
+    std::string line = input[index];
+    bool allow_layout_sensitive_rewrite = !layout_sensitive[index];
+
     if (!output.empty()) {
       std::string label;
       if (isLabel(line, label) && isJumpToLabel(output.back(), label)) {
+        if (output_sensitive.back()) {
+          output.back() = nopInstruction();
+        } else {
+          output.pop_back();
+          output_sensitive.pop_back();
+        }
+      }
+    }
+    if (allow_layout_sensitive_rewrite && output.size() >= 2 &&
+        !output_sensitive[output.size() - 1] &&
+        !output_sensitive[output.size() - 2]) {
+      std::string label;
+      std::string jump_target;
+      ConditionalBranch branch =
+          parseConditionalBranch(output[output.size() - 2]);
+      if (isLabel(line, label) && branch.valid && branch.label == label &&
+          parseJumpTarget(output.back(), jump_target)) {
         output.pop_back();
+        output_sensitive.pop_back();
+        std::string opcode = invertedBranchOpcode(branch.opcode);
+        output.back() = indentLikeInstruction(opcode + " " + branch.reg +
+                                              ", " + jump_target);
       }
     }
 
     if (isBoundary(line)) {
       state.clear();
       output.push_back(std::move(line));
+      output_sensitive.push_back(layout_sensitive[index]);
       continue;
     }
 
     line = simplifyArithmetic(line);
     if (isNoOp(line)) {
-      continue;
+      if (!layout_sensitive[index]) {
+        continue;
+      }
+      line = nopInstruction();
+    }
+
+    MoveInstruction move = parseMove(line);
+    if (!output.empty() && move.valid &&
+        isRedundantAfterMove(parseMove(output.back()), move)) {
+      if (allow_layout_sensitive_rewrite) {
+        continue;
+      }
+      line = nopInstruction();
+      move = {};
     }
 
     if (!output.empty()) {
@@ -297,6 +475,7 @@ std::string optimizeOnce(const std::string &assembly) {
         state.invalidateRegister("t1");
         output.push_back(indentLikeInstruction("slli t1, t1, " +
                                                std::to_string(shift)));
+        output_sensitive.push_back(layout_sensitive[index]);
         continue;
       }
     }
@@ -319,10 +498,12 @@ std::string optimizeOnce(const std::string &assembly) {
         state.invalidateRegister(access.reg);
         state.stack_value_regs[access.address] = access.reg;
         output.push_back(std::move(line));
+        output_sensitive.push_back(layout_sensitive[index]);
         continue;
       } else {
         state.stack_value_regs[access.address] = access.reg;
         output.push_back(std::move(line));
+        output_sensitive.push_back(layout_sensitive[index]);
         continue;
       }
     }
@@ -333,6 +514,7 @@ std::string optimizeOnce(const std::string &assembly) {
     }
 
     output.push_back(std::move(line));
+    output_sensitive.push_back(layout_sensitive[index]);
   }
 
   bool trailing_newline = !assembly.empty() && assembly.back() == '\n';
@@ -341,16 +523,14 @@ std::string optimizeOnce(const std::string &assembly) {
 
 } // namespace
 
+const char *PeepholeOptimizer::name() const { return "peephole"; }
+
+std::string PeepholeOptimizer::run(const std::string &assembly) const {
+  return runPeepholePass(assembly);
+}
+
 std::string PeepholeOptimizer::optimize(const std::string &assembly) const {
-  std::string current = assembly;
-  for (int i = 0; i < kMaxOptimizationIterations; ++i) {
-    std::string next = optimizeOnce(current);
-    if (next == current) {
-      break;
-    }
-    current = std::move(next);
-  }
-  return current;
+  return run(assembly);
 }
 
 } // namespace compiler::riscv

@@ -13,6 +13,10 @@ TEST_CASE(assembly_emitter_formats_sections_labels_and_large_stack_offsets) {
   emitter.global("g");
   emitter.label("g");
   emitter.word(42);
+  emitter.sectionBss();
+  emitter.global("z");
+  emitter.label("z");
+  emitter.zero(16);
   emitter.sectionText();
   emitter.loadImmediate("t0", -16);
   emitter.loadAddress("t1", "g");
@@ -27,6 +31,9 @@ TEST_CASE(assembly_emitter_formats_sections_labels_and_large_stack_offsets) {
   EXPECT_TRUE(riscv.find("  .globl g\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("g:\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  .word 42\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  .bss\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("z:\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  .zero 16\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  li t2, 3000\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  lw a0, 0(t2)\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  sw a0, 0(t2)\n") != std::string::npos);

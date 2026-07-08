@@ -10,6 +10,8 @@ void AssemblyEmitter::sectionText() { output_ << "  .text\n"; }
 
 void AssemblyEmitter::sectionData() { output_ << "  .data\n"; }
 
+void AssemblyEmitter::sectionBss() { output_ << "  .bss\n"; }
+
 void AssemblyEmitter::global(const std::string &name) {
   output_ << "  .globl " << name << "\n";
 }
@@ -21,6 +23,8 @@ void AssemblyEmitter::label(const std::string &name) {
 void AssemblyEmitter::word(int value) {
   output_ << "  .word " << value << "\n";
 }
+
+void AssemblyEmitter::zero(int bytes) { output_ << "  .zero " << bytes << "\n"; }
 
 void AssemblyEmitter::instruction(const std::string &text) {
   output_ << "  " << text << "\n";

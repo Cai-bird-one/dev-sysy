@@ -138,6 +138,41 @@ std::map<std::string, int> countValueUses(const Function &function) {
   return uses;
 }
 
+std::string asmLabel(const std::string &function_name,
+                     const std::string &koopa_label) {
+  return function_name + "_" + stripSigil(koopa_label);
+}
+
+void emitDirectComparisonBranch(const std::string &function_name,
+                                const std::string &comparison_line,
+                                const std::string &then_label,
+                                const std::string &else_label,
+                                OperandEmitter &operands,
+                                AssemblyEmitter &output) {
+  std::vector<std::string> parts = splitWhitespace(comparison_line);
+  if (parts.size() != 5 || parts[1] != "=" || !isComparison(parts[2])) {
+    return;
+  }
+
+  const std::string &op = parts[2];
+  operands.loadOperand(parts[3], "t0");
+  operands.loadOperand(parts[4], "t1");
+  if (op == "eq") {
+    output.instruction("beq t0, t1, " + asmLabel(function_name, then_label));
+  } else if (op == "ne") {
+    output.instruction("bne t0, t1, " + asmLabel(function_name, then_label));
+  } else if (op == "lt") {
+    output.instruction("blt t0, t1, " + asmLabel(function_name, then_label));
+  } else if (op == "gt") {
+    output.instruction("blt t1, t0, " + asmLabel(function_name, then_label));
+  } else if (op == "le") {
+    output.instruction("bge t1, t0, " + asmLabel(function_name, then_label));
+  } else if (op == "ge") {
+    output.instruction("bge t0, t1, " + asmLabel(function_name, then_label));
+  }
+  output.instruction("j " + asmLabel(function_name, else_label));
+}
+
 } // namespace
 
 FunctionEmitter::FunctionEmitter(
@@ -189,14 +224,13 @@ void FunctionEmitter::emit(std::ostream &output) {
           comparison_uses != value_uses.end() && comparison_uses->second == 1) {
         auto bool_uses = value_uses.find(bool_result);
         if (bool_uses != value_uses.end() && bool_uses->second == 1) {
-          instructions.emitInstruction(function_.instructions[i], i);
           const std::string &then_label =
               invert ? branch.else_label : branch.then_label;
           const std::string &else_label =
               invert ? branch.then_label : branch.else_label;
-          instructions.emitInstruction("br " + comparison.result + ", " +
-                                           then_label + ", " + else_label,
-                                       i + 2);
+          emitDirectComparisonBranch(function_.name, function_.instructions[i],
+                                     then_label, else_label, operands,
+                                     asm_output);
           i += 2;
           continue;
         }

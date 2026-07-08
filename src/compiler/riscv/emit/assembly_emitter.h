@@ -11,9 +11,11 @@ public:
 
   void sectionText();
   void sectionData();
+  void sectionBss();
   void global(const std::string &name);
   void label(const std::string &name);
   void word(int value);
+  void zero(int bytes);
 
   void instruction(const std::string &text);
   void loadImmediate(const std::string &reg, int value);

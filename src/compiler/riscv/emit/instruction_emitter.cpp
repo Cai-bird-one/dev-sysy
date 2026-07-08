@@ -104,6 +104,12 @@ void InstructionEmitter::emitInstruction(const std::string &line,
     if (parts.size() != 4) {
       throw RiscvError("invalid branch instruction: " + line);
     }
+    long long constant_condition = 0;
+    if (parseInteger(parts[1], constant_condition)) {
+      output_.instruction("j " + asmLabel(constant_condition != 0 ? parts[2]
+                                                                  : parts[3]));
+      return;
+    }
     operands.loadOperand(parts[1], "t0");
     output_.instruction("bnez t0, " + asmLabel(parts[2]));
     output_.instruction("j " + asmLabel(parts[3]));
@@ -344,6 +350,16 @@ void InstructionEmitter::emitBinary(const std::string &op,
       int shift = 0;
       if (powerOfTwoShift(constant, shift)) {
         output_.instruction("slli t0, t0, " + std::to_string(shift));
+        return;
+      }
+      if (constant > 1 && powerOfTwoShift(constant - 1, shift)) {
+        output_.instruction("slli t1, t0, " + std::to_string(shift));
+        output_.instruction("add t0, t1, t0");
+        return;
+      }
+      if (constant > 1 && powerOfTwoShift(constant + 1, shift)) {
+        output_.instruction("slli t1, t0, " + std::to_string(shift));
+        output_.instruction("sub t0, t1, t0");
         return;
       }
     }

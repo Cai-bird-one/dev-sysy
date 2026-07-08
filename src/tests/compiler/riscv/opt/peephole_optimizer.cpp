@@ -1,6 +1,8 @@
+#include "compiler/riscv/opt/assembly_optimizer.h"
 #include "compiler/riscv/opt/peephole_optimizer.h"
 #include "tests/test_framework.h"
 
+#include <algorithm>
 #include <string>
 
 using namespace compiler;
@@ -88,6 +90,67 @@ TEST_CASE(peephole_optimizer_removes_jump_to_next_label) {
                        "  ret\n");
 }
 
+TEST_CASE(peephole_optimizer_inverts_small_branch_to_next_label) {
+  riscv::PeepholeOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("  bnez t0, loop_body\n"
+                         "  j loop_end\n"
+                         "loop_body:\n"
+                         "  ret\n"
+                         "loop_end:\n"
+                         "  ret\n");
+
+  EXPECT_EQ(optimized, "  beqz t0, loop_end\n"
+                       "loop_body:\n"
+                       "  ret\n"
+                       "loop_end:\n"
+                       "  ret\n");
+}
+
+TEST_CASE(peephole_optimizer_removes_redundant_adjacent_moves_in_small_code) {
+  riscv::PeepholeOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("  mv t5, t0\n"
+                         "  mv t0, t5\n"
+                         "  mv a0, t1\n"
+                         "  mv a0, t1\n"
+                         "  ret\n");
+
+  EXPECT_EQ(optimized, "  mv t5, t0\n"
+                       "  mv a0, t1\n"
+                       "  ret\n");
+}
+
+TEST_CASE(peephole_optimizer_aggressively_rewrites_large_branchy_code) {
+  riscv::AssemblyOptimizer optimizer;
+  std::string assembly = "  .text\n"
+                         "  .globl hot\n"
+                         "hot:\n";
+  for (int i = 0; i < 1200; ++i) {
+    assembly += "  li t0, 0\n";
+  }
+  for (int i = 0; i < 20; ++i) {
+    std::string suffix = std::to_string(i);
+    assembly += "  bnez t0, hot_body_" + suffix + "\n";
+    assembly += "  j hot_end_" + suffix + "\n";
+    assembly += "hot_body_" + suffix + ":\n";
+    assembly += "  mv t5, t0\n";
+    assembly += "  mv t0, t5\n";
+    assembly += "hot_end_" + suffix + ":\n";
+  }
+
+  std::string optimized = optimizer.optimize(assembly);
+  EXPECT_TRUE(optimized.find("  beqz t0, hot_end_0\n"
+                             "hot_body_0:\n") != std::string::npos);
+  EXPECT_TRUE(optimized.find("  bnez t0, hot_body_0\n"
+                             "  j hot_end_0\n"
+                             "hot_body_0:\n") == std::string::npos);
+  EXPECT_TRUE(optimized.find("  mv t5, t0\n"
+                             "  mv t0, t5\n") == std::string::npos);
+  EXPECT_TRUE(std::count(optimized.begin(), optimized.end(), '\n') <
+              std::count(assembly.begin(), assembly.end(), '\n'));
+}
+
 TEST_CASE(peephole_optimizer_keeps_independent_immediates_and_addresses) {
   riscv::PeepholeOptimizer optimizer;
   std::string optimized =
@@ -116,15 +179,15 @@ TEST_CASE(peephole_optimizer_simplifies_zero_arithmetic) {
                        "  mv a1, a0\n");
 }
 
-TEST_CASE(peephole_optimizer_returns_fixed_point) {
-  riscv::PeepholeOptimizer optimizer;
+TEST_CASE(assembly_optimizer_iterates_riscv_passes_to_fixed_point) {
+  riscv::AssemblyOptimizer optimizer;
   std::string optimized =
-      optimizer.optimize("  sw t0, 4(sp)\n"
-                         "  lw a0, 4(sp)\n"
-                         "  add t1, t1, zero\n"
+      optimizer.optimize("  j done\n"
                          "  j done\n"
                          "done:\n"
                          "  ret\n");
 
+  EXPECT_EQ(optimized, "done:\n"
+                       "  ret\n");
   EXPECT_EQ(optimizer.optimize(optimized), optimized);
 }

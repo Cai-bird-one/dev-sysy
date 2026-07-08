@@ -77,8 +77,10 @@ TEST_CASE(instruction_emitter_strength_reduces_power_of_two_multiply) {
       "%entry:",
       "  %0 = mul @x, 8",
       "  %1 = mul 16, %0",
-      "  %2 = mul %1, 0",
-      "  ret %2",
+      "  %2 = mul %1, 3",
+      "  %3 = mul %2, 7",
+      "  %4 = mul %3, 0",
+      "  ret %4",
   };
 
   riscv::StackFrame frame(function, {},
@@ -94,6 +96,10 @@ TEST_CASE(instruction_emitter_strength_reduces_power_of_two_multiply) {
   std::string riscv = output.str();
   EXPECT_TRUE(riscv.find("  slli t0, t0, 3\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  slli t0, t0, 4\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  slli t1, t0, 1\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  add t0, t1, t0\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  slli t1, t0, 3\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  sub t0, t1, t0\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  li t0, 0\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("  mul t0, t0, t1\n") == std::string::npos);
 }
