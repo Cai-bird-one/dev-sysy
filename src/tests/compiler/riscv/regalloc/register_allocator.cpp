@@ -80,7 +80,27 @@ TEST_CASE(register_allocator_colors_scalar_parameters) {
   EXPECT_TRUE(allocation.hasRegister("@a"));
   EXPECT_TRUE(allocation.hasRegister("@b"));
   EXPECT_TRUE(allocation.registerFor("@a").rfind("t", 0) == 0);
-  EXPECT_TRUE(allocation.registerFor("@b").rfind("t", 0) == 0);
+  EXPECT_EQ(allocation.registerFor("@b"), std::string("a1"));
+}
+
+TEST_CASE(register_allocator_uses_multi_round_incoming_argument_choice) {
+  riscv::Function function;
+  function.name = "mix";
+  function.params = {"@a", "@b", "@c"};
+  function.param_types = {"i32", "i32", "i32"};
+  function.instructions = {
+      "%entry:",
+      "  %0 = add @a, @b",
+      "  %1 = add %0, @c",
+      "  ret %1",
+  };
+
+  riscv::RegisterAllocation allocation =
+      riscv::RegisterAllocator().allocate(function);
+
+  EXPECT_TRUE(allocation.hasRegister("@a"));
+  EXPECT_EQ(allocation.registerFor("@b"), std::string("a1"));
+  EXPECT_EQ(allocation.registerFor("@c"), std::string("a2"));
 }
 
 TEST_CASE(register_allocator_uses_callee_saved_registers_under_pressure) {

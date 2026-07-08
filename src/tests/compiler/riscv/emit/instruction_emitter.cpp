@@ -130,6 +130,68 @@ TEST_CASE(instruction_emitter_uses_zero_register_for_zero_comparisons) {
   EXPECT_TRUE(riscv.find("  li t1, 0\n") == std::string::npos);
 }
 
+TEST_CASE(instruction_emitter_uses_immediates_for_comparisons) {
+  riscv::Function function;
+  function.name = "main";
+  function.params = {"@x"};
+  function.param_types = {"i32"};
+  function.instructions = {
+      "%entry:",
+      "  %0 = lt @x, 100",
+      "  %1 = ge @x, 100",
+      "  %2 = eq @x, 62",
+      "  %3 = ne 62, @x",
+      "  ret %3",
+  };
+
+  riscv::StackFrame frame(function, {},
+                          riscv::RegisterAllocator().allocate(function));
+  std::ostringstream output;
+  riscv::AssemblyEmitter asm_output(output);
+  riscv::InstructionEmitter instructions(function.name, frame, asm_output);
+
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    instructions.emitInstruction(function.instructions[i], i);
+  }
+
+  std::string riscv = output.str();
+  EXPECT_TRUE(riscv.find("  slti t0, t0, 100\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  addi t0, t0, -62\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  li t1, 100\n") == std::string::npos);
+  EXPECT_TRUE(riscv.find("  li t1, 62\n") == std::string::npos);
+}
+
+TEST_CASE(instruction_emitter_strength_reduces_power_of_two_division) {
+  riscv::Function function;
+  function.name = "main";
+  function.params = {"@x"};
+  function.param_types = {"i32"};
+  function.instructions = {
+      "%entry:",
+      "  %0 = div @x, 2",
+      "  %1 = mod @x, 2",
+      "  ret %1",
+  };
+
+  riscv::StackFrame frame(function, {},
+                          riscv::RegisterAllocator().allocate(function));
+  std::ostringstream output;
+  riscv::AssemblyEmitter asm_output(output);
+  riscv::InstructionEmitter instructions(function.name, frame, asm_output);
+
+  for (size_t i = 0; i < function.instructions.size(); ++i) {
+    instructions.emitInstruction(function.instructions[i], i);
+  }
+
+  std::string riscv = output.str();
+  EXPECT_TRUE(riscv.find("  srai t1, t0, 31\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  andi t1, t1, 1\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  srai t1, t1, 1\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  sub t0, t0, t1\n") != std::string::npos);
+  EXPECT_TRUE(riscv.find("  div t0, t0, t1\n") == std::string::npos);
+  EXPECT_TRUE(riscv.find("  rem t0, t0, t1\n") == std::string::npos);
+}
+
 TEST_CASE(instruction_emitter_uses_colored_registers_for_temporaries) {
   riscv::Function function;
   function.name = "main";

@@ -71,6 +71,10 @@ bool powerOfTwoShift(long long value, int &shift) {
   return shift <= 31;
 }
 
+bool fitsImmediate12(long long value) {
+  return value >= -2048 && value <= 2047;
+}
+
 } // namespace
 
 InstructionEmitter::InstructionEmitter(std::string function_name,
@@ -231,6 +235,60 @@ void InstructionEmitter::emitBinary(const std::string &op,
       }
       return;
     }
+    long long immediate = 0;
+    if (parseInteger(right, immediate)) {
+      int imm12 = static_cast<int>(immediate);
+      if ((op == "eq" || op == "ne") && fitsImmediate12(-immediate)) {
+        operands.loadOperand(left, "t0");
+        output_.instruction("addi t0, t0, " + std::to_string(-immediate));
+        output_.instruction((op == "eq" ? "seqz" : "snez") +
+                            std::string(" t0, t0"));
+        return;
+      }
+      if ((op == "lt" || op == "ge") && fitsImmediate12(immediate)) {
+        operands.loadOperand(left, "t0");
+        output_.instruction("slti t0, t0, " + std::to_string(imm12));
+        if (op == "ge") {
+          output_.instruction("xori t0, t0, 1");
+        }
+        return;
+      }
+      if ((op == "le" || op == "gt") && fitsImmediate12(immediate + 1)) {
+        operands.loadOperand(left, "t0");
+        output_.instruction("slti t0, t0, " +
+                            std::to_string(immediate + 1));
+        if (op == "gt") {
+          output_.instruction("xori t0, t0, 1");
+        }
+        return;
+      }
+    }
+    if (parseInteger(left, immediate)) {
+      if ((op == "eq" || op == "ne") && fitsImmediate12(-immediate)) {
+        operands.loadOperand(right, "t0");
+        output_.instruction("addi t0, t0, " + std::to_string(-immediate));
+        output_.instruction((op == "eq" ? "seqz" : "snez") +
+                            std::string(" t0, t0"));
+        return;
+      }
+      if ((op == "gt" || op == "le") && fitsImmediate12(immediate)) {
+        operands.loadOperand(right, "t0");
+        output_.instruction("slti t0, t0, " + std::to_string(immediate));
+        if (op == "le") {
+          output_.instruction("xori t0, t0, 1");
+        }
+        return;
+      }
+      if ((op == "ge" || op == "lt") && fitsImmediate12(immediate + 1)) {
+        operands.loadOperand(right, "t0");
+        output_.instruction("slti t0, t0, " +
+                            std::to_string(immediate + 1));
+        if (op == "lt") {
+          output_.instruction("xori t0, t0, 1");
+        }
+        return;
+      }
+    }
     operands.loadOperand(left, "t0");
     operands.loadOperand(right, "t1");
     emitComparison(op);
@@ -286,6 +344,40 @@ void InstructionEmitter::emitBinary(const std::string &op,
       int shift = 0;
       if (powerOfTwoShift(constant, shift)) {
         output_.instruction("slli t0, t0, " + std::to_string(shift));
+        return;
+      }
+    }
+  }
+  if (op == "div" || op == "mod") {
+    long long divisor = 0;
+    if (parseInteger(right, divisor)) {
+      int shift = 0;
+      if (powerOfTwoShift(divisor, shift)) {
+        if (op == "mod" && shift == 0) {
+          output_.loadImmediate("t0", "0");
+          return;
+        }
+        operands.loadOperand(left, "t0");
+        if (shift == 0) {
+          return;
+        }
+
+        long long bias = divisor - 1;
+        output_.instruction("srai t1, t0, 31");
+        if (fitsImmediate12(bias)) {
+          output_.instruction("andi t1, t1, " + std::to_string(bias));
+        } else {
+          output_.loadImmediate("t2", std::to_string(bias));
+          output_.instruction("and t1, t1, t2");
+        }
+        output_.instruction("add t1, t0, t1");
+        output_.instruction("srai t1, t1, " + std::to_string(shift));
+        if (op == "div") {
+          output_.instruction("mv t0, t1");
+        } else {
+          output_.instruction("slli t1, t1, " + std::to_string(shift));
+          output_.instruction("sub t0, t0, t1");
+        }
         return;
       }
     }
@@ -367,7 +459,6 @@ void InstructionEmitter::emitGetElementPtr(const std::string &result,
                                            bool is_getptr) {
   OperandEmitter operands(frame_, output_);
   operands.emitPointerAddress(base, "t0");
-  operands.loadOperand(index, "t1");
   int stride = 4;
   std::vector<int> dimensions = frame_.dimensionsForPointer(base);
   if (is_getptr && !dimensions.empty()) {
@@ -375,6 +466,21 @@ void InstructionEmitter::emitGetElementPtr(const std::string &result,
   } else if (dimensions.size() > 1) {
     stride = elementCount(dimensions, 1) * 4;
   }
+  long long constant_index = 0;
+  if (parseInteger(index, constant_index)) {
+    long long offset = constant_index * stride;
+    if (offset != 0) {
+      if (fitsImmediate12(offset)) {
+        output_.instruction("addi t0, t0, " + std::to_string(offset));
+      } else {
+        output_.loadImmediate("t1", std::to_string(offset));
+        output_.instruction("add t0, t0, t1");
+      }
+    }
+    operands.storeValue("t0", result);
+    return;
+  }
+  operands.loadOperand(index, "t1");
   int shift = 0;
   if (powerOfTwoShift(stride, shift)) {
     output_.instruction("slli t1, t1, " + std::to_string(shift));

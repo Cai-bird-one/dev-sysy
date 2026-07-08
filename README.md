@@ -41,6 +41,13 @@ make
 python3 manual_tensor_perf_cases/compare_matmul_lowering.py
 ```
 
+2021 性能用例子集可以用以下脚本抽取和运行：
+
+```sh
+python3 scripts/run_2021_perf_cases.py --extract /tmp/sysy2021_selected
+python3 scripts/run_2021_perf_cases.py --runs 1
+```
+
 ## 词法分析框架
 
 词法分析模块位于 `src/compiler/lexer` 目录. 词法分析引擎在 `lexer.h` / `lexer.cpp` 中, 具体 token 规则集中写在 `token_rules.h` / `token_rules.cpp` 中.

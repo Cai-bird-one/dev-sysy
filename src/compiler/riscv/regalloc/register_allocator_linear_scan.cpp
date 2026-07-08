@@ -8,27 +8,71 @@ namespace {
 
 using namespace regalloc_detail;
 
+void appendUnique(std::vector<std::string> &target,
+                  const std::vector<std::string> &source) {
+  for (const std::string &reg : source) {
+    if (!containsRegister(target, reg)) {
+      target.push_back(reg);
+    }
+  }
+}
+
+void appendUnique(std::vector<std::string> &target, const std::string &reg) {
+  if (!reg.empty() && !containsRegister(target, reg)) {
+    target.push_back(reg);
+  }
+}
+
+std::string incomingArgumentRegister(
+    const RegisterAllocator::LiveInterval &interval) {
+  if (interval.parameter_index <= 0 || interval.parameter_index >= 8) {
+    return "";
+  }
+  return "a" + std::to_string(interval.parameter_index);
+}
+
 std::vector<std::string>
-registerPreferenceFor(const RegisterAllocator::LiveInterval &interval) {
+registerPreferenceFor(const RegisterAllocator::LiveInterval &interval,
+                      RegisterAllocationMode mode) {
   std::vector<std::string> registers;
+  if (mode == RegisterAllocationMode::PreferIncomingArguments &&
+      interval.is_parameter) {
+    appendUnique(registers, incomingArgumentRegister(interval));
+    appendUnique(registers, kTempRegisters);
+    appendUnique(registers, kArgumentRegisters);
+    appendUnique(registers, kCalleeSavedRegisters);
+    return registers;
+  }
+  if (mode == RegisterAllocationMode::PreferCalleeSaved) {
+    appendUnique(registers, kCalleeSavedRegisters);
+    appendUnique(registers, kTempRegisters);
+    appendUnique(registers, kArgumentRegisters);
+    return registers;
+  }
+  if (mode == RegisterAllocationMode::PreferCallerSaved) {
+    appendUnique(registers, kTempRegisters);
+    appendUnique(registers, kArgumentRegisters);
+    appendUnique(registers, kCalleeSavedRegisters);
+    return registers;
+  }
   if (interval.crosses_call) {
-    appendAll(registers, kCalleeSavedRegisters);
-    appendAll(registers, kTempRegisters);
+    appendUnique(registers, kCalleeSavedRegisters);
+    appendUnique(registers, kTempRegisters);
     return registers;
   }
   if (interval.is_parameter) {
-    appendAll(registers, kTempRegisters);
-    appendAll(registers, kCalleeSavedRegisters);
+    appendUnique(registers, kTempRegisters);
+    appendUnique(registers, kCalleeSavedRegisters);
     return registers;
   }
   if (interval.used_at_call) {
-    appendAll(registers, kTempRegisters);
-    appendAll(registers, kCalleeSavedRegisters);
+    appendUnique(registers, kTempRegisters);
+    appendUnique(registers, kCalleeSavedRegisters);
     return registers;
   }
-  appendAll(registers, kTempRegisters);
-  appendAll(registers, kArgumentRegisters);
-  appendAll(registers, kCalleeSavedRegisters);
+  appendUnique(registers, kTempRegisters);
+  appendUnique(registers, kArgumentRegisters);
+  appendUnique(registers, kCalleeSavedRegisters);
   return registers;
 }
 
@@ -44,12 +88,22 @@ int nextUseAfter(const RegisterAllocator::LiveInterval &interval,
 
 } // namespace
 
-RegisterAllocation RegisterAllocator::linearScanAllocate(
-    std::vector<LiveInterval> intervals) const {
+RegisterAllocation
+RegisterAllocator::linearScanAllocate(std::vector<LiveInterval> intervals,
+                                      RegisterAllocationMode mode) const {
   std::sort(intervals.begin(), intervals.end(),
-            [](const LiveInterval &left, const LiveInterval &right) {
+            [mode](const LiveInterval &left, const LiveInterval &right) {
               if (left.start != right.start) {
                 return left.start < right.start;
+              }
+              if (mode == RegisterAllocationMode::PreferIncomingArguments &&
+                  left.is_parameter != right.is_parameter) {
+                return left.is_parameter && !right.is_parameter;
+              }
+              if (mode == RegisterAllocationMode::PreferIncomingArguments &&
+                  left.is_parameter && right.is_parameter &&
+                  left.parameter_index != right.parameter_index) {
+                return left.parameter_index < right.parameter_index;
               }
               if (left.end != right.end) {
                 return left.end > right.end;
@@ -68,7 +122,7 @@ RegisterAllocation RegisterAllocator::linearScanAllocate(
                  active.end());
 
     std::vector<std::string> preferred_registers =
-        registerPreferenceFor(current);
+        registerPreferenceFor(current, mode);
     std::set<std::string> unavailable;
     for (size_t active_index : active) {
       if (intervals[active_index].assigned) {

@@ -5,11 +5,16 @@
 #include "compiler/ir/opt/pipeline.h"
 
 namespace compiler::ir::opt {
+namespace {
+
+constexpr int kMaxOptimizationIterations = 128;
+
+} // namespace
 
 std::string IrOptimizer::optimize(const std::string &koopa_ir) const {
   IrModule module = KoopaIrParser().parse(koopa_ir);
 
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < kMaxOptimizationIterations; ++i) {
     PassManager passes = buildPerfPipeline();
     if (!passes.run(module).changed) {
       break;

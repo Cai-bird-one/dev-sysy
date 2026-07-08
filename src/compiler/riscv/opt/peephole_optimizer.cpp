@@ -4,10 +4,13 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace compiler::riscv {
 namespace {
+
+constexpr int kMaxOptimizationIterations = 128;
 
 struct MemoryAccess {
   bool valid = false;
@@ -264,9 +267,7 @@ bool isJumpToLabel(const std::string &line, const std::string &label) {
   return trim(line) == "j " + label;
 }
 
-} // namespace
-
-std::string PeepholeOptimizer::optimize(const std::string &assembly) const {
+std::string optimizeOnce(const std::string &assembly) {
   std::vector<std::string> input = splitLines(assembly);
   std::vector<std::string> output;
   OptimizerState state;
@@ -336,6 +337,20 @@ std::string PeepholeOptimizer::optimize(const std::string &assembly) const {
 
   bool trailing_newline = !assembly.empty() && assembly.back() == '\n';
   return joinLines(output, trailing_newline);
+}
+
+} // namespace
+
+std::string PeepholeOptimizer::optimize(const std::string &assembly) const {
+  std::string current = assembly;
+  for (int i = 0; i < kMaxOptimizationIterations; ++i) {
+    std::string next = optimizeOnce(current);
+    if (next == current) {
+      break;
+    }
+    current = std::move(next);
+  }
+  return current;
 }
 
 } // namespace compiler::riscv

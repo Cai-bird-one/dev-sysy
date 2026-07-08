@@ -122,6 +122,14 @@ RegisterAllocator::buildLiveIntervals(
     interval.start = kNoFutureUse;
     interval.end = -1;
     interval.is_parameter = register_params.find(value) != register_params.end();
+    if (interval.is_parameter) {
+      auto param_found =
+          std::find(function.params.begin(), function.params.end(), value);
+      if (param_found != function.params.end()) {
+        interval.parameter_index =
+            static_cast<int>(param_found - function.params.begin());
+      }
+    }
     intervals[value] = std::move(interval);
   }
 

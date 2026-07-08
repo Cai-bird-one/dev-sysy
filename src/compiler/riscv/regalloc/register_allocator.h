@@ -11,6 +11,13 @@
 
 namespace compiler::riscv {
 
+enum class RegisterAllocationMode {
+  Default,
+  PreferIncomingArguments,
+  PreferCalleeSaved,
+  PreferCallerSaved,
+};
+
 class RegisterAllocator {
 public:
   RegisterAllocation allocate(const Function &function) const;
@@ -25,6 +32,7 @@ public:
     int end = 0;
     std::vector<int> uses;
     bool is_parameter = false;
+    int parameter_index = -1;
     bool used_at_call = false;
     bool crosses_call = false;
     bool assigned = false;
@@ -47,7 +55,15 @@ private:
       const std::vector<InstructionInfo> &instructions,
       const LivenessInfo &liveness) const;
   RegisterAllocation
-  linearScanAllocate(std::vector<LiveInterval> intervals) const;
+  linearScanAllocate(std::vector<LiveInterval> intervals,
+                     RegisterAllocationMode mode) const;
+  RegisterAllocation allocateMultiRound(
+      const Function &function, const std::vector<LiveInterval> &intervals,
+      const LivenessInfo &liveness) const;
+  long long scoreAllocation(const Function &function,
+                            const std::vector<LiveInterval> &intervals,
+                            const LivenessInfo &liveness,
+                            const RegisterAllocation &allocation) const;
   void recordCallSavedValues(const Function &function,
                              const LivenessInfo &liveness,
                              RegisterAllocation &allocation) const;

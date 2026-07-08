@@ -115,3 +115,16 @@ TEST_CASE(peephole_optimizer_simplifies_zero_arithmetic) {
                        "  li a0, 0\n"
                        "  mv a1, a0\n");
 }
+
+TEST_CASE(peephole_optimizer_returns_fixed_point) {
+  riscv::PeepholeOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("  sw t0, 4(sp)\n"
+                         "  lw a0, 4(sp)\n"
+                         "  add t1, t1, zero\n"
+                         "  j done\n"
+                         "done:\n"
+                         "  ret\n");
+
+  EXPECT_EQ(optimizer.optimize(optimized), optimized);
+}

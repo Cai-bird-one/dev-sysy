@@ -1,9 +1,144 @@
 #include "compiler/riscv/emit/function_emitter.h"
 
+#include "compiler/riscv/util/riscv_utils.h"
+
 #include <ostream>
+#include <string>
 #include <utility>
 
 namespace compiler::riscv {
+namespace {
+
+struct ComparisonAssignment {
+  bool valid = false;
+  std::string result;
+};
+
+struct BranchInstruction {
+  bool valid = false;
+  std::string condition;
+  std::string then_label;
+  std::string else_label;
+};
+
+ComparisonAssignment parseComparisonAssignment(const std::string &line) {
+  std::vector<std::string> parts = splitWhitespace(line);
+  if (parts.size() != 5 || parts[1] != "=" || !isComparison(parts[2])) {
+    return {};
+  }
+  return {true, parts[0]};
+}
+
+BranchInstruction parseBranchInstruction(const std::string &line) {
+  std::vector<std::string> parts = splitWhitespace(line);
+  if (parts.size() != 4 || parts[0] != "br") {
+    return {};
+  }
+  return {true, parts[1], parts[2], parts[3]};
+}
+
+bool isLiteralValue(const std::string &text, const std::string &literal) {
+  return isIntegerLiteral(text) && text == literal;
+}
+
+bool parseBooleanComparison(const std::string &line,
+                            const std::string &condition_value,
+                            std::string &result, bool &invert) {
+  std::vector<std::string> parts = splitWhitespace(line);
+  if (parts.size() != 5 || parts[1] != "=") {
+    return false;
+  }
+  const std::string &op = parts[2];
+  const std::string &left = parts[3];
+  const std::string &right = parts[4];
+  bool value_left = left == condition_value;
+  bool value_right = right == condition_value;
+  if (!value_left && !value_right) {
+    return false;
+  }
+  const std::string &literal = value_left ? right : left;
+  if (op == "ne" && isLiteralValue(literal, "0")) {
+    result = parts[0];
+    invert = false;
+    return true;
+  }
+  if (op == "eq" && isLiteralValue(literal, "0")) {
+    result = parts[0];
+    invert = true;
+    return true;
+  }
+  if (op == "eq" && isLiteralValue(literal, "1")) {
+    result = parts[0];
+    invert = false;
+    return true;
+  }
+  if (op == "ne" && isLiteralValue(literal, "1")) {
+    result = parts[0];
+    invert = true;
+    return true;
+  }
+  return false;
+}
+
+void countUse(const std::string &operand, std::map<std::string, int> &uses) {
+  if (!operand.empty() && (operand[0] == '%' || operand[0] == '@')) {
+    ++uses[operand];
+  }
+}
+
+std::map<std::string, int> countValueUses(const Function &function) {
+  std::map<std::string, int> uses;
+  for (const std::string &line : function.instructions) {
+    std::vector<std::string> parts = splitWhitespace(line);
+    if (parts.empty()) {
+      continue;
+    }
+    if (parts[0] == "ret") {
+      if (parts.size() == 2) {
+        countUse(parts[1], uses);
+      }
+      continue;
+    }
+    if (parts[0] == "br") {
+      countUse(parts[1], uses);
+      continue;
+    }
+    if (parts[0] == "jump") {
+      continue;
+    }
+    if (parts[0] == "store") {
+      if (parts.size() == 3) {
+        countUse(parts[1], uses);
+        countUse(parts[2], uses);
+      }
+      continue;
+    }
+    if (startsWith(line, "call @") ||
+        (parts.size() >= 3 && parts[1] == "=" && parts[2] == "call")) {
+      CallInstruction call = parseCallInstruction(line);
+      for (const std::string &arg : call.args) {
+        countUse(arg, uses);
+      }
+      continue;
+    }
+    if (parts.size() >= 3 && parts[1] == "=") {
+      const std::string &op = parts[2];
+      if (op == "load" && parts.size() == 4) {
+        countUse(parts[3], uses);
+      } else if ((op == "getelemptr" || op == "getptr") &&
+                 parts.size() == 5) {
+        countUse(parts[3], uses);
+        countUse(parts[4], uses);
+      } else if (parts.size() == 5) {
+        countUse(parts[3], uses);
+        countUse(parts[4], uses);
+      }
+    }
+  }
+  return uses;
+}
+
+} // namespace
 
 FunctionEmitter::FunctionEmitter(
     Function function, std::map<std::string, std::vector<int>> global_dimensions,
@@ -37,7 +172,36 @@ void FunctionEmitter::emit(std::ostream &output) {
   }
 
   InstructionEmitter instructions(function_.name, frame_, asm_output);
+  std::map<std::string, int> value_uses = countValueUses(function_);
   for (size_t i = 0; i < function_.instructions.size(); ++i) {
+    if (i + 2 < function_.instructions.size()) {
+      ComparisonAssignment comparison =
+          parseComparisonAssignment(function_.instructions[i]);
+      std::string bool_result;
+      bool invert = false;
+      BranchInstruction branch =
+          parseBranchInstruction(function_.instructions[i + 2]);
+      auto comparison_uses = value_uses.find(comparison.result);
+      if (comparison.valid &&
+          parseBooleanComparison(function_.instructions[i + 1],
+                                 comparison.result, bool_result, invert) &&
+          branch.valid && branch.condition == bool_result &&
+          comparison_uses != value_uses.end() && comparison_uses->second == 1) {
+        auto bool_uses = value_uses.find(bool_result);
+        if (bool_uses != value_uses.end() && bool_uses->second == 1) {
+          instructions.emitInstruction(function_.instructions[i], i);
+          const std::string &then_label =
+              invert ? branch.else_label : branch.then_label;
+          const std::string &else_label =
+              invert ? branch.then_label : branch.else_label;
+          instructions.emitInstruction("br " + comparison.result + ", " +
+                                           then_label + ", " + else_label,
+                                       i + 2);
+          i += 2;
+          continue;
+        }
+      }
+    }
     instructions.emitInstruction(function_.instructions[i], i);
   }
 }

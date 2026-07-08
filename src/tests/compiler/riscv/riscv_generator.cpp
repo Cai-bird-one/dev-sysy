@@ -106,8 +106,8 @@ TEST_CASE(riscv_generator_handles_arrays_and_getelemptr) {
 
   EXPECT_TRUE(riscv.find("a:\n  .word 1\n  .word 2\n  .word 0\n  .word 3") !=
               std::string::npos);
-  EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
-  EXPECT_TRUE(riscv.find("slli t1, t1, 2") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi t0, t0, 12") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi t0, t0, 8") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw t0, 0(") != std::string::npos);
 }
 
@@ -142,8 +142,8 @@ TEST_CASE(riscv_generator_handles_array_parameters_and_getptr) {
   EXPECT_TRUE(riscv.find("sum:\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("sw a0") == std::string::npos);
   EXPECT_TRUE(riscv.find("sw a1") == std::string::npos);
-  EXPECT_TRUE(riscv.find("li t2, 12") != std::string::npos);
-  EXPECT_TRUE(riscv.find("slli t1, t1, 2") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi t0, t0, 12") != std::string::npos);
+  EXPECT_TRUE(riscv.find("addi t0, t0, 8") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_keeps_plain_array_transpose_generic) {
@@ -204,7 +204,7 @@ TEST_CASE(riscv_generator_handles_comparisons) {
                                          "  ret %1\n"
                                          "}\n");
 
-  EXPECT_TRUE(riscv.find("slt t0, t0, t1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("slti t0, t0, 2") != std::string::npos);
   EXPECT_TRUE(riscv.find("seqz t0, t0") != std::string::npos);
 }
 
@@ -223,6 +223,46 @@ TEST_CASE(riscv_generator_handles_branches_and_jumps) {
   EXPECT_TRUE(riscv.find("j main_else") != std::string::npos);
   EXPECT_TRUE(riscv.find("main_then:\n") != std::string::npos);
   EXPECT_TRUE(riscv.find("j main_then") != std::string::npos);
+}
+
+TEST_CASE(riscv_generator_removes_redundant_booleanized_comparison_branches) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("fun @main(@x: i32, @y: i32): i32 {\n"
+                                         "%entry:\n"
+                                         "  %0 = eq @x, 62\n"
+                                         "  %1 = ne %0, 0\n"
+                                         "  br %1, %then, %else\n"
+                                         "%then:\n"
+                                         "  %2 = lt @x, @y\n"
+                                         "  %3 = eq %2, 0\n"
+                                         "  br %3, %inverted, %else\n"
+                                         "%inverted:\n"
+                                         "  ret 2\n"
+                                         "%else:\n"
+                                         "  ret 0\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("seqz t0, t0") != std::string::npos);
+  EXPECT_TRUE(riscv.find("slt t0, t0, t1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("bnez t0, main_then") != std::string::npos);
+  EXPECT_TRUE(riscv.find("bnez t0, main_else") != std::string::npos);
+  EXPECT_TRUE(riscv.find("snez t0") == std::string::npos);
+}
+
+TEST_CASE(riscv_generator_keeps_reused_comparison_results) {
+  riscv::RiscvGenerator generator;
+  std::string riscv = generator.generate("fun @main(@x: i32, @y: i32): i32 {\n"
+                                         "%entry:\n"
+                                         "  %0 = lt @x, @y\n"
+                                         "  br %0, %then, %else\n"
+                                         "%then:\n"
+                                         "  ret %0\n"
+                                         "%else:\n"
+                                         "  ret 0\n"
+                                         "}\n");
+
+  EXPECT_TRUE(riscv.find("slt t0, t0, t1") != std::string::npos);
+  EXPECT_TRUE(riscv.find("bnez t0, main_then") != std::string::npos);
 }
 
 TEST_CASE(riscv_generator_keeps_control_flow_labels_function_local) {
