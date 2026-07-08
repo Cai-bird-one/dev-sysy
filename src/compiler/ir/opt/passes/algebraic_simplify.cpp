@@ -21,6 +21,22 @@ bool simplify(const Assignment &assignment, std::string &replacement) {
   }
   const std::string &lhs = assignment.args[0];
   const std::string &rhs = assignment.args[1];
+  if (lhs == rhs) {
+    if (assignment.op == "sub" || assignment.op == "ne" ||
+        assignment.op == "lt" || assignment.op == "gt") {
+      replacement = "0";
+      return true;
+    }
+    if (assignment.op == "eq" || assignment.op == "le" ||
+        assignment.op == "ge") {
+      replacement = "1";
+      return true;
+    }
+    if (assignment.op == "and" || assignment.op == "or") {
+      replacement = lhs;
+      return true;
+    }
+  }
   if ((assignment.op == "add" && rhs == "0") ||
       (assignment.op == "sub" && rhs == "0") ||
       (assignment.op == "mul" && rhs == "1") ||
@@ -35,6 +51,18 @@ bool simplify(const Assignment &assignment, std::string &replacement) {
   }
   if (assignment.op == "mul" && (lhs == "0" || rhs == "0")) {
     replacement = "0";
+    return true;
+  }
+  if (assignment.op == "and" && (lhs == "0" || rhs == "0")) {
+    replacement = "0";
+    return true;
+  }
+  if (assignment.op == "or" && rhs == "0") {
+    replacement = lhs;
+    return true;
+  }
+  if (assignment.op == "or" && lhs == "0") {
+    replacement = rhs;
     return true;
   }
   return false;

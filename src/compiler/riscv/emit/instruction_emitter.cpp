@@ -4,6 +4,7 @@
 #include "compiler/riscv/riscv_generator.h"
 #include "compiler/riscv/util/riscv_utils.h"
 
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -398,10 +399,21 @@ void InstructionEmitter::emitBinary(const std::string &op,
       if (constant == 1) {
         return;
       }
+      if (constant == -1) {
+        output_.instruction("sub " + target + ", zero, " + target);
+        return;
+      }
       int shift = 0;
       if (powerOfTwoShift(constant, shift)) {
         output_.instruction("slli " + target + ", " + target + ", " +
                             std::to_string(shift));
+        return;
+      }
+      if (constant < -1 && constant != std::numeric_limits<long long>::min() &&
+          powerOfTwoShift(-constant, shift)) {
+        output_.instruction("slli " + target + ", " + target + ", " +
+                            std::to_string(shift));
+        output_.instruction("sub " + target + ", zero, " + target);
         return;
       }
       if (constant > 1 && powerOfTwoShift(constant - 1, shift)) {

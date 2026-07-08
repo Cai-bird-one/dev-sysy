@@ -50,6 +50,30 @@ TEST_CASE(ir_optimizer_simplifies_algebraic_identity) {
   EXPECT_TRUE(optimized.find("ret %0") != std::string::npos);
 }
 
+TEST_CASE(ir_optimizer_simplifies_same_operand_identities) {
+  ir::opt::IrOptimizer optimizer;
+  std::string optimized =
+      optimizer.optimize("fun @main(): i32 {\n"
+                         "%entry:\n"
+                         "  %0 = load %a\n"
+                         "  %1 = sub %0, %0\n"
+                         "  %2 = eq %0, %0\n"
+                         "  %3 = ne %0, %0\n"
+                         "  %4 = or %0, 0\n"
+                         "  %5 = and %4, %4\n"
+                         "  %6 = and %5, 0\n"
+                         "  %7 = add %1, %2\n"
+                         "  %8 = add %7, %6\n"
+                         "  ret %8\n"
+                         "}\n");
+
+  EXPECT_TRUE(optimized.find("%1 = sub") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%2 = eq") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%3 = ne") == std::string::npos);
+  EXPECT_TRUE(optimized.find("%5 = and") == std::string::npos);
+  EXPECT_TRUE(optimized.find("ret 1") != std::string::npos);
+}
+
 TEST_CASE(ir_optimizer_removes_unreachable_code_after_terminator) {
   ir::opt::IrOptimizer optimizer;
   std::string optimized =
