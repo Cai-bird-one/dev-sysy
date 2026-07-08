@@ -121,7 +121,7 @@ TEST_CASE(peephole_optimizer_removes_redundant_adjacent_moves_in_small_code) {
                        "  ret\n");
 }
 
-TEST_CASE(peephole_optimizer_preserves_large_branchy_layout) {
+TEST_CASE(peephole_optimizer_aggressively_rewrites_large_branchy_code) {
   riscv::AssemblyOptimizer optimizer;
   std::string assembly = "  .text\n"
                          "  .globl hot\n"
@@ -140,16 +140,15 @@ TEST_CASE(peephole_optimizer_preserves_large_branchy_layout) {
   }
 
   std::string optimized = optimizer.optimize(assembly);
+  EXPECT_TRUE(optimized.find("  beqz t0, hot_end_0\n"
+                             "hot_body_0:\n") != std::string::npos);
   EXPECT_TRUE(optimized.find("  bnez t0, hot_body_0\n"
                              "  j hot_end_0\n"
-                             "hot_body_0:\n") != std::string::npos);
-  EXPECT_TRUE(optimized.find("  beqz t0, hot_end_0\n"
                              "hot_body_0:\n") == std::string::npos);
   EXPECT_TRUE(optimized.find("  mv t5, t0\n"
-                             "  nop\n"
-                             "hot_end_0:\n") != std::string::npos);
-  EXPECT_EQ(std::count(optimized.begin(), optimized.end(), '\n'),
-            std::count(assembly.begin(), assembly.end(), '\n'));
+                             "  mv t0, t5\n") == std::string::npos);
+  EXPECT_TRUE(std::count(optimized.begin(), optimized.end(), '\n') <
+              std::count(assembly.begin(), assembly.end(), '\n'));
 }
 
 TEST_CASE(peephole_optimizer_keeps_independent_immediates_and_addresses) {
